@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radeon AI PRO R9700 — 算力核心</title>
+<style>
+  /* =========================================
+     CORE VARIABLES & RESET (Consistent with Pipeline Page)
+     ========================================= */
+  :root {
+    --bg-color: #000000;
+    --text-main: #f5f5f7;
+    --text-muted: #86868b;
+    --accent-red: #ff3b30; /* AMD Red accent */
+    --accent-blue: #2997ff;
+    --accent-purple: #bf5af2;
+    --card-bg: rgba(28, 28, 30, 0.6);
+    --card-border: rgba(255, 255, 255, 0.1);
+    --font-sans: "SF Pro Display", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: "SF Mono", "Roboto Mono", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    line-height: 1.5;
+  }
+
+  /* =========================================
+     UTILITIES & ANIMATIONS
+     ========================================= */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  /* 滚动显示动画 */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px) scale(0.98);
+    transition: all 1s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  
+  .delay-100 { transition-delay: 0.1s; }
+  .delay-200 { transition-delay: 0.2s; }
+  .delay-300 { transition-delay: 0.3s; }
+
+  /* 文字渐变 */
+  .text-gradient-red {
+    background: linear-gradient(135deg, #ff453a 0%, #ff9f0a 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .text-gradient-white {
+    background: linear-gradient(180deg, #fff 0%, #a1a1aa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* =========================================
+     NAVIGATION
+     ========================================= */
+  .nav {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    height: 48px;
+    display: flex;
+    align-items: center;
+  }
+  .nav-inner {
+    width: 100%; max-width: 1000px; margin: 0 auto;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 20px; font-size: 12px;
+  }
+  .nav-logo { font-weight: 600; letter-spacing: -0.5px; color: var(--text-main); }
+  .nav-links a { color: var(--text-muted); margin-left: 20px; text-decoration: none; transition: 0.3s; font-size: 11px;}
+  .nav-links a:hover { color: var(--text-main); }
+
+  /* =========================================
+     HERO SECTION
+     ========================================= */
+  .hero {
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 50%, #1a0505 0%, #000000 60%);
+  }
+
+  .eyebrow {
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: var(--accent-red);
+    font-weight: 600;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    font-size: clamp(50px, 8vw, 100px);
+    font-weight: 700;
+    letter-spacing: -2px;
+    line-height: 1.1;
+    margin-bottom: 20px;
+    background: linear-gradient(180deg, #fff 0%, #6e6e73 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .hero-desc {
+    max-width: 600px;
+    font-size: 21px;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-bottom: 50px;
+  }
+
+  /* Big Stat Hero */
+  .big-stat {
+    font-size: 120px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -4px;
+    color: var(--accent-red);
+    text-shadow: 0 0 60px rgba(255, 59, 48, 0.3);
+    margin-bottom: 10px;
+  }
+  .big-stat-label {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 14px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* =========================================
+     GRID SECTIONS
+     ========================================= */
+  .section-padding { padding: 100px 0; }
+  
+  .section-header {
+    text-align: center;
+    margin-bottom: 60px;
+  }
+  .section-header h2 {
+    font-size: 40px;
+    font-weight: 600;
+    margin-bottom: 15px;
+  }
+  .section-header p { color: var(--text-muted); font-size: 19px; }
+
+  /* Bento Grid */
+  .bento-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  @media(max-width: 900px) { .bento-grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card-bg);
+    border-radius: 24px;
+    padding: 30px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--card-border);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.4s ease, background 0.4s;
+  }
+  .card:hover {
+    background: rgba(40, 40, 42, 0.8);
+    transform: scale(1.02);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .card.span-2 { grid-column: span 2; }
+  
+  .card-icon {
+    font-size: 24px;
+    margin-bottom: 20px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .card-icon svg { width: 24px; height: 24px; fill: currentColor; }
+
+  .card h3 {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .card p {
+    font-size: 16px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .metric-large {
+    font-size: 56px;
+    font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.1;
+    margin: 20px 0;
+  }
+  .metric-unit {
+    font-size: 20px;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  /* Comparison Bar */
+  .bar-container {
+    width: 100%;
+    height: 8px;
+    background: #333;
+    border-radius: 4px;
+    margin-top: 15px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    background: var(--accent-red);
+    border-radius: 4px;
+    width: 0%;
+    transition: width 1.5s ease-out;
+  }
+
+  /* =========================================
+     SPECS TABLE
+     ========================================= */
+  .specs-table {
+    max-width: 800px;
+    margin: 0 auto;
+    border-top: 1px solid #333;
+  }
+  .spec-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 24px 0;
+    border-bottom: 1px solid #333;
+    align-items: baseline;
+  }
+  .spec-key { color: var(--text-muted); font-size: 15px; }
+  .spec-val { 
+    font-weight: 600; 
+    font-size: 17px; 
+    text-align: right;
+    max-width: 60%;
+  }
+
+  /* =========================================
+     FOOTER
+     ========================================= */
+  footer {
+    padding: 80px 20px;
+    text-align: center;
+    border-top: 1px solid #222;
+    color: #666;
+    font-size: 12px;
+    margin-top: 100px;
+  }
+  .back-link {
+    color: var(--accent-blue);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 15px;
+    text-decoration: none;
+  }
+  .back-link:hover { text-decoration: underline; }
+
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="nav-logo">RED ONE</div>
+    <div class="nav-links">
+      <a href="red_one.html">硬件概览</a>
+      <a href="pipeline.html">软件架构</a>
+      <a href="#specs" style="color:#fff;">显卡参数</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="eyebrow reveal">NODE 03 · GENERATIVE CORE</div>
+  <h1 class="reveal delay-100">Radeon AI PRO<br><span class="text-gradient-red">R9700</span></h1>
+  <p class="hero-desc reveal delay-200">
+    专为本地工作站打造的 AI 算力巨兽。<br>
+    依托 ROCm 生态，释放极致的大模型推理性能。
+  </p>
+  
+  <div class="reveal delay-300">
+    <div class="big-stat text-gradient-red">1531</div>
+    <div class="big-stat-label">TOPS (INT4 Sparse)</div>
+  </div>
+</header>
+
+<!-- PERFORMANCE SECTION -->
+<section class="section-padding container">
+  <div class="section-header reveal">
+    <h2>算力分层，极致性能</h2>
+    <p>从 FP32 高精度计算到 INT4 极致推理，全精度覆盖。</p>
+  </div>
+
+  <div class="bento-grid">
+    <!-- Card 1: INT4 -->
+    <div class="card span-2 reveal delay-100">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24"><path d="M21 16.5C21 16.88 20.79 17.21 20.47 17.38L12.57 21.82C12.41 21.94 12.21 22 12 22C11.79 22 11.59 21.94 11.43 21.82L3.53 17.38C3.21 17.21 3 16.88 3 16.5V7.5C3 7.12 3.21 6.79 3.53 6.62L11.43 2.18C11.59 2.06 11.79 2 12 2C12.21 2 12.41 2.06 12.57 2.18L20.47 6.62C20.79 6.79 21 7.12 21 7.5V16.5Z"/></svg>
+        AI 推理核心
+      </div>
+      <h3 class="text-gradient-white">INT4 / INT8 稀疏化推理</h3>
+      <p>在结构稀疏性优化下，为本地部署 DeepSeek 等大语言模型提供澎湃动力。</p>
+      <div class="metric-large">766 <span class="metric-unit">TOPS</span></div>
+      <div style="font-size:13px; color:#888;">INT8 / FP8 Matrix (Sparse)</div>
+      <div class="bar-container"><div class="bar-fill" style="width: 90%"></div></div>
+    </div>
+
+    <!-- Card 2: FP16 -->
+    <div class="card reveal delay-200">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24"><path d="M16 6L22 12L16 18V6ZM2 6H14V18H2V6Z"/></svg>
+        扩散模型
+      </div>
+      <h3 class="text-gradient-white">FP16 半精度</h3>
+      <p>加速 FLUX / Stable Diffusion 图像生成任务。</p>
+      <div class="metric-large">383 <span class="metric-unit">TFLOPs</span></div>
+      <div class="bar-container"><div class="bar-fill" style="width: 50%"></div></div>
+    </div>
+
+    <!-- Card 3: FP32 -->
+    <div class="card reveal delay-100">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24"><path d="M19 3H5C3.89 3 3 3.89 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.89 20.1 3 19 3ZM9 17H7V10H9V17ZM13 17H11V7H13V17ZM17 17H15V13H17V17Z"/></svg>
+        矢量计算
+      </div>
+      <h3 class="text-gradient-white">FP32 单精度</h3>
+      <p>满足传统 3D 渲染与科学计算需求。</p>
+      <div class="metric-large">47.8 <span class="metric-unit">TFLOPs</span></div>
+    </div>
+
+    <!-- Card 4: VRAM -->
+    <div class="card span-2 reveal delay-200">
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; height:100%;">
+        <div>
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M15 9H9V15H15V9ZM2 4C2 2.89 2.89 2 4 2H20C21.1 2 22 2.9 22 4V20C22 21.1 21.1 22 20 22H4C2.9 22 2 21.1 2 20V4Z"/></svg>
+            显存架构
+          </div>
+          <h3 class="text-gradient-white">32 GB 大容量显存</h3>
+          <p style="max-width:400px;">配备 GDDR6 显存与 256-bit 位宽。640 GB/s 的惊人带宽，足以让本地工作站轻松吞吐百亿参数模型与 4K 视频流。</p>
+        </div>
+        <div class="metric-large">640 <span class="metric-unit">GB/s</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HARDWARE SPECS LIST -->
+<section id="specs" class="section-padding container">
+  <div class="section-header reveal">
+    <h2>硬件规格详情</h2>
+  </div>
+
+  <div class="specs-table reveal delay-100">
+    <div class="spec-row">
+      <div class="spec-key">流处理器 (Shaders)</div>
+      <div class="spec-val">4096 Cores</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-key">计算单元 (CUs)</div>
+      <div class="spec-val">64 Groups</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-key">AI 加速器</div>
+      <div class="spec-val">128 × Gen 2 AI Accelerators</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-key">光线追踪单元</div>
+      <div class="spec-val">64 × Gen 3 RT Cores</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-key">Boost 频率</div>
+      <div class="spec-val">Up to 2920 MHz</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-key">显存类型 / 位宽</div>
+      <div class="spec-val">GDDR6 / 256-bit</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-key">接口规格</div>
+      <div class="spec-val">PCIe 5.0 x16</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-key">整卡功耗 (TBP)</div>
+      <div class="spec-val">300W</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-key">供电接口</div>
+      <div class="spec-val">1× 12V-2x6 (支持多卡堆叠)</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>RED ONE PROJECT · HARDWARE SPECS</div>
+  <a href="pipeline.html" class="back-link">← 返回 Pipeline 架构页</a>
+</footer>
+
+<script>
+  // Scroll Reveal Logic
+  document.addEventListener("DOMContentLoaded", function() {
+    const observerOptions = { threshold: 0.1, rootMargin: "0px 0px -50px 0px" };
+    
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          
+          // Animate bars when visible
+          const bars = entry.target.querySelectorAll('.bar-fill');
+          bars.forEach(bar => {
+            // Read inline style width and apply it
+            const targetWidth = bar.style.width;
+            bar.style.width = '0%';
+            setTimeout(() => {
+                bar.style.width = targetWidth;
+            }, 100);
+          });
+
+          observer.unobserve(entry.target);
+        }
+      });
+    }, observerOptions);
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  });
+</script>
+
+</body>
+</html>
