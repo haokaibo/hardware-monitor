@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI PC 硬件监控</title>
+<style>
+:root{--bg:#000;--card:#121214;--text:#fff;--muted:#86868b;--dim:#6e6e73;--orange:#f2661c;--orange2:#ff8a45;--green:#4ade80;--red:#ff5d5d;--amber:#f0b429;--line:rgba(255,255,255,.08);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI","PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5;overflow-x:hidden}
+.nav{position:fixed;top:0;left:0;right:0;height:52px;z-index:10;display:flex;align-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line)}
+.nav-inner{width:100%;max-width:1000px;margin:0 auto;padding:0 24px;display:flex;justify-content:space-between;font-size:12px}
+.nav b{font-size:13px;letter-spacing:.5px}.nav span{color:var(--muted);font-family:var(--mono)}
+main{padding:92px 40px 60px;max-width:1260px;margin:0 auto}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--muted);display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--orange);animation:pulse 2s ease-in-out infinite}
+.dot.err{background:var(--red);animation:none}
+@keyframes pulse{50%{opacity:.35}}
+h1{font-size:clamp(28px,4vw,40px);font-weight:800;line-height:1.15;letter-spacing:-.02em;max-width:720px}
+h1 span{color:var(--muted);font-weight:600}
+.stats{display:flex;gap:32px;margin-top:28px;flex-wrap:wrap}
+.stats b{font-family:var(--mono);font-size:24px;display:block}.stats span{font-size:12px;color:var(--dim)}
+.section{margin-top:64px}
+h2{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:14px;margin:4px 0 20px}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 28px 16px}
+.bar-row{display:grid;grid-template-columns:150px 1fr 170px;align-items:center;gap:12px;padding:7px 0}
+.label{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+small{display:block;font-size:10px;color:var(--dim);font-family:var(--mono)}
+.bar-track{height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px}
+.bar-value{font-family:var(--mono);font-size:12px;text-align:right;white-space:nowrap}
+.group{margin:16px 0 4px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--dim);display:flex;align-items:center;gap:8px}
+.group:first-child{margin-top:0}.group::after{content:"";flex:1;height:1px;background:var(--line)}
+.err-box{margin-top:20px;padding:12px 16px;border:1px solid rgba(255,93,93,.4);border-radius:12px;color:var(--red);font-size:13px}
+@media(max-width:700px){main{padding:80px 16px 40px}.bar-row{grid-template-columns:1fr 130px}.bar-track{grid-column:1/-1;order:3}.chart{padding:16px}}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><b>Hardware.ai</b><span id="host">–</span></div></nav>
+<main>
+  <div class="eyebrow"><span class="dot" id="dot"></span><span id="status">连接中…</span></div>
+  <h1>AI PC 实时状态 <span>CPU · GPU · 内存 · 显存 · SSD</span></h1>
+  <div class="stats" id="stats"></div>
+  <div id="err"></div>
+  <div class="section"><h2>处理器</h2><p class="sub" id="cpu-sub"></p><div class="chart" id="cpu"></div></div>
+  <div class="section"><h2>内存</h2><p class="sub">系统内存 DRAM；可用 = 无需换出即可分配给程序的部分</p><div class="chart" id="mem"></div></div>
+  <div class="section"><h2>显卡与显存</h2><p class="sub">VRAM 为显卡专属内存，温度分别来自核心、结点与显存传感器</p><div class="chart" id="gpu"></div></div>
+  <div class="section"><h2>存储</h2><p class="sub">按物理盘分组；容量为已挂载文件系统的使用量</p><div class="chart" id="disk"></div></div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=b=>b==null?"–":b>=2**40?(b/2**40).toFixed(2)+" TB":(b/2**30).toFixed(1)+" GB";
+const tc=t=>t>=85?"var(--red)":t>=70?"var(--amber)":"var(--green)";
+const row=(l,s,p,c,v)=>`<div class="bar-row"><div class="label">${esc(l)}<small>${esc(s||"")}</small></div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(0,Math.min(100,p||0))}%;background:${c}"></div></div><div class="bar-value">${v}</div></div>`;
+const cap=(l,s,u,t,a,c)=>row(l,s,t?u/t*100:0,c,`${fmt(u)} / ${fmt(t)}<small style="text-align:right">可用 ${fmt(a)}</small>`);
+const tmp=(l,s,t)=>t==null?"":row(l,s,t,tc(t),`${t.toFixed(0)} °C`);
+const pct=v=>v==null?"–":v.toFixed(0)+"%";
+
+function render(m){
+  $("#host").textContent=m.label||"";
+  const c=m.cpu||{},r=m.mem||{},g=(m.gpus||[])[0];
+  $("#stats").innerHTML=[[pct(c.usage),"CPU 使用率"],[pct(g&&g.usage),"GPU 使用率"],
+    [g?fmt(g.vram_used):"–","显存已用"],[fmt(r.used),"内存已用"]]
+    .map(([a,b])=>`<div><b>${a}</b><span>${b}</span></div>`).join("");
+  $("#cpu-sub").textContent=`${c.model||""} · ${c.threads} 线程`;
+  $("#cpu").innerHTML=row("使用率",`负载 ${(c.load||[]).map(x=>x.toFixed(2)).join(" / ")}`,c.usage,"var(--orange)",pct(c.usage))
+    +(c.freq_mhz?row("平均频率","",c.freq_mhz/60,"var(--orange2)",c.freq_mhz+" MHz"):"")+tmp("温度","Tctl / Package",c.temp);
+  $("#mem").innerHTML=cap("DRAM","系统内存",r.used,r.total,r.avail,"var(--orange2)")
+    +(r.swap_total?cap("Swap","交换分区",r.swap_used,r.swap_total,r.swap_total-r.swap_used,"var(--amber)"):"");
+  $("#gpu").innerHTML=(m.gpus||[]).map(x=>`<div class="group">${esc(x.name)}</div>`
+    +row("GPU 使用率",x.power_w?`功耗 ${x.power_w.toFixed(0)} W`:"",x.usage,"var(--green)",pct(x.usage))
+    +cap("VRAM","显存",x.vram_used,x.vram_total,x.vram_total-x.vram_used,"var(--green)")
+    +Object.entries(x.temps).map(([k,v])=>tmp("温度 · "+k,"",v)).join("")).join("")||`<p class="sub">未检测到独立 GPU</p>`;
+  $("#disk").innerHTML=(m.disks||[]).map(d=>`<div class="group">${esc(d.name)} · ${d.kind} · ${esc(d.model)} · ${fmt(d.size)}</div>`
+    +d.fs.map(f=>cap(f.mount,f.fstype,f.used,f.total,f.avail,"var(--red)")).join("")
+    +(d.fs.length?"":`<p class="sub" style="margin:6px 0">无宿主机挂载的文件系统</p>`)
+    +tmp("温度","",d.temp)).join("");
+}
+async function tick(){
+  try{
+    const res=await fetch("/api/metrics",{cache:"no-store"}),m=await res.json();
+    if(!res.ok||m.error&&!m.cpu)throw new Error(m.error||res.status);
+    render(m);$("#err").innerHTML=m.error?`<div class="err-box">${esc(m.error)}</div>`:"";
+    $("#dot").className="dot";$("#status").textContent="实时 · 更新于 "+new Date().toLocaleTimeString();
+  }catch(e){
+    $("#dot").className="dot err";$("#status").textContent="连接中断";
+    $("#err").innerHTML=`<div class="err-box">${esc(e.message)}</div>`;
+  }
+}
+tick();setInterval(tick,2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+services:
+  hwmon-web:
+    build: .
+    container_name: hwmon-web
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      AGENT_URL: "http://<AI_PC_IP>:9101"   # 改成 AI PC 的局域网 IP
+      AGENT_TOKEN: "<与 agent 相同的随机串>"

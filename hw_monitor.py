@@ -368,9 +368,15 @@ def get_system_temp():
         print("  未能获取 sensors 输出")
         return
 
-    # 一级匹配：label 本身带 system/mainboard/ambient 等关键字（如 "System Temperature"）
-    # 二级匹配：super-IO/EC 芯片块里的通用 temp1/temp2（这类块基本就是主板温度传感器）
+    # 一级匹配：label 本身带 system/mainboard/ambient 等完整关键字（如 "System Temperature"）
+    # 二级匹配：Nuvoton/ITE 具名探针标签（如 SYSTIN、AUXTIN0-3、PECI）——部分社区/内核驱动会用这套命名
+    # 三级匹配：本机 nct6687 社区增强驱动的实际命名——"Thermistor N" 是主板物理测温点（非CPU相关），
+    #           而 "AMD TSI Addr.." / "Diode N (curr)" 经比对数值和 k10temp 的 CPU Tctl 高度接近，
+    #           判断是 CPU 温度的另一路读数（不是系统/机箱温度），排除掉避免误判
+    # 四级匹配（后备）：super-IO/EC 芯片块里的通用 temp1/temp2 纯数字标签
     sys_re = re.compile(r"(system|mainboard|motherboard|ambient|pcb|chassis|board)", re.I)
+    named_probe_re = re.compile(r"^(systin|auxtin\d*|peci\d*|smbusmaster\d*|thermistor\d*)$", re.I)
+    cpu_dup_re = re.compile(r"(tsi|diode)", re.I)  # 经数值比对确认是 CPU 温度的重复读数，非系统/机箱温度
     superio = ("it8", "w83", "nct6", "f71888", "asus", "superio", "-ec")  # nct6 同时覆盖 nct6687/nct6775
     found = []
     for title, block in _parse_sensors_blocks(out):
@@ -381,8 +387,17 @@ def get_system_temp():
             if not m:
                 continue
             label, val = m.group(1).strip(), m.group(2)
+            # 去掉 "(curr)" 这类后缀、压缩空格，得到用于精确匹配的 key
+            label_key = re.sub(r"\s*\(.*?\)\s*$", "", label).strip()
+            label_key = re.sub(r"\s+", "", label_key).lower()
             if sys_re.search(label):
                 found.append((title, label, val, False))
+            elif is_superio and cpu_dup_re.search(label):
+                # 数值上和 CPU Tctl 高度接近的重复读数，跳过（不计入系统/机箱温度）
+                continue
+            elif is_superio and named_probe_re.match(label_key):
+                if float(val) > 0:
+                    found.append((title, label, val, False))
             elif is_superio and re.match(r"temp\d+$", label, re.I):
                 # 未接线的传感器通常读数为 0，过滤掉避免刷屏
                 if float(val) > 0:
