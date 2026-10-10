@@ -1,0 +1,71 @@
+name: deploy-hwmon
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hwmon
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # 需要一台位于 Docker 宿主机 (<RUNNER_HOST>) 上的 runner，
+    # 且该 runner 带有 hwmon-host 标签（见 README「Gitea 自动部署」）。
+    runs-on: hwmon-host
+    steps:
+      - name: Fetch code and rebuild container
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+          AGENT_URL: ${{ secrets.AGENT_URL }}
+          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          WORKDIR="$(mktemp -d)"
+          trap 'rm -rf "$WORKDIR"' EXIT
+
+          # 1) 拉取 main 分支最新代码
+          git clone --depth 1 --branch main \
+            "http://deploy:${DEPLOY_TOKEN}@<GITEA_HOST>:3000/admin/hardware-monitor.git" "$WORKDIR/src"
+
+          # 2) 同步到部署目录；保留宿主机上的 .env，避免被 --delete 删除
+          DEPLOY_DIR=/opt/hwmon
+          mkdir -p "$DEPLOY_DIR"
+          rsync -a --delete \
+            --exclude '.git' --exclude '.gitea' --exclude '.env' \
+            --exclude '.venv' --exclude '__pycache__' \
+            "$WORKDIR/src/" "$DEPLOY_DIR/"
+
+          # 3) 用 Gitea Secrets 写入运行时配置；未配置 secrets 时沿用宿主机已有 .env
+          if [ -n "${AGENT_URL:-}" ] && [ -n "${AGENT_TOKEN:-}" ]; then
+            umask 077
+            printf 'AGENT_URL=%s\nAGENT_TOKEN=%s\n' "$AGENT_URL" "$AGENT_TOKEN" > "$DEPLOY_DIR/.env"
+          fi
+          if [ ! -f "$DEPLOY_DIR/.env" ]; then
+            echo "缺少 $DEPLOY_DIR/.env，请在仓库 Secrets 配置 AGENT_URL / AGENT_TOKEN" >&2
+            exit 1
+          fi
+
+          # 4) 重建镜像并滚动更新容器
+          cd "$DEPLOY_DIR"
+          docker compose up -d --build
+          docker image prune -f >/dev/null 2>&1 || true
+          docker compose ps
+
+      - name: Health check
+        run: |
+          set -e
+          for i in $(seq 1 30); do
+            status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' hwmon-web 2>/dev/null || echo missing)"
+            if [ "$status" = "healthy" ] || curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+              echo "✅ hwmon-web 健康检查通过 (health=$status)"
+              docker ps --filter name=hwmon-web --format '{{.Names}}  {{.Status}}'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ 健康检查失败，最近日志：" >&2
+          docker logs --tail 60 hwmon-web 2>&1 || true
+          exit 1

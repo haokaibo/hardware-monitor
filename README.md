@@ -38,12 +38,52 @@ curl -H "X-Token: $(grep TOKEN /etc/hwmon-agent.env | cut -d= -f2)" localhost:91
 
 ## 2. G3：部署 web 容器
 
-在 `docker-compose.yml` 填好 `AGENT_URL` 和 `AGENT_TOKEN`（与上面相同），然后：
-
 ```bash
+cd /opt/hwmon
+cp .env.example .env      # 填入 AI PC 的 AGENT_URL 与共享 AGENT_TOKEN
 docker compose up -d --build
 # 浏览器打开 http://<G3_IP>:8080
 ```
+
+## 3. Gitea Actions 自动部署（可选）
+
+推送 `main` 分支后自动重建并更新 G3 上的 `hwmon-web` 容器，工作流见
+[`.gitea/workflows/deploy.yaml`](.gitea/workflows/deploy.yaml)。
+
+### 一次性准备
+
+1. **在仓库配置 Secrets**（Settings → Actions → Secrets）：
+
+   | Secret | 说明 |
+   |---|---|
+   | `DEPLOY_TOKEN` | 可读该仓库的 Gitea token，供 CI 拉取代码 |
+   | `AGENT_URL` | 如 `http://<AGENT_HOST>:9101` |
+   | `AGENT_TOKEN` | 与 agent 一致的共享令牌 |
+
+2. **在 Docker 宿主机（<RUNNER_HOST>）注册一个 runner**，标签为 `hwmon-host`：
+
+   ```bash
+   # 仓库 Settings → Actions → Runners → 新建 runner，复制 registration token
+   act_runner register --no-interactive \
+     --instance http://<GITEA_HOST>:3000 \
+     --token <REGISTRATION_TOKEN> \
+     --name hwmon-runner \
+     --labels hwmon-host
+   ```
+
+   并在 `config.yaml` 中把该标签映射为宿主机执行，使 CI 能直接调用 `docker`：
+
+   ```yaml
+   runner:
+     labels:
+       - "hwmon-host:host"
+   ```
+
+   然后以 systemd（或 `act_runner daemon`）常驻运行。
+
+> runner 用户需拥有 `/opt/hwmon` 的写权限，并处于 `docker` 组（或等价权限）。
+> 若你的 Docker 宿主机上已有其他标签的 runner，把工作流里的 `runs-on: hwmon-host`
+> 改成那个标签即可。agent 端（第 1 节）仍为手动部署，因为需读取宿主机 sysfs。
 
 ## 环境变量
 

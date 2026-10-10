@@ -10,5 +10,8 @@ venv/
 .vscode/
 .idea/
 
+# 本地部署配置（含 AGENT_TOKEN，切勿提交）
+.env
+
 # macOS
 .DS_Store

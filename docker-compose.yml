@@ -1,10 +1,12 @@
 services:
   hwmon-web:
     build: .
+    image: hwmon-web:latest
     container_name: hwmon-web
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      AGENT_URL: "http://<AI_PC_IP>:9101"   # 改成 AI PC 的局域网 IP
-      AGENT_TOKEN: "<与 agent 相同的随机串>"
+      # 实际取值来自同目录的 .env（本地手填或由 Gitea Actions 写入）
+      AGENT_URL: "${AGENT_URL:?请在 .env 中设置 AGENT_URL}"
+      AGENT_TOKEN: "${AGENT_TOKEN:?请在 .env 中设置 AGENT_TOKEN}"
