@@ -30,13 +30,20 @@ jobs:
           git clone --depth 1 --branch main \
             "http://deploy:${DEPLOY_TOKEN}@<GITEA_HOST>:3000/admin/hardware-monitor.git" "$WORKDIR/src"
 
-          # 2) 同步到部署目录；保留宿主机上的 .env，避免被 --delete 删除
+          # 2) 同步到部署目录；保留宿主机上的 .env，并兼容未安装 rsync 的机器
           DEPLOY_DIR=/opt/hwmon
           mkdir -p "$DEPLOY_DIR"
-          rsync -a --delete \
-            --exclude '.git' --exclude '.gitea' --exclude '.env' \
-            --exclude '.venv' --exclude '__pycache__' \
-            "$WORKDIR/src/" "$DEPLOY_DIR/"
+          if command -v rsync >/dev/null 2>&1; then
+            rsync -a --delete \
+              --exclude '.git' --exclude '.gitea' --exclude '.env' \
+              --exclude '.venv' --exclude '__pycache__' \
+              "$WORKDIR/src/" "$DEPLOY_DIR/"
+          else
+            echo "未找到 rsync，改用 find + cp 同步"
+            find "$DEPLOY_DIR" -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +
+            cp -a "$WORKDIR/src/." "$DEPLOY_DIR/"
+            rm -rf "$DEPLOY_DIR/.git" "$DEPLOY_DIR/.gitea"
+          fi
 
           # 3) 用 Gitea Secrets 写入运行时配置；未配置 secrets 时沿用宿主机已有 .env
           if [ -n "${AGENT_URL:-}" ] && [ -n "${AGENT_TOKEN:-}" ]; then
