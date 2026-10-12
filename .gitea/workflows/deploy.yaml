@@ -58,7 +58,9 @@ jobs:
           # 4) 重建镜像并滚动更新容器
           cd "$DEPLOY_DIR"
           docker compose up -d --build
-          docker image prune -f >/dev/null 2>&1 || true
+          docker image prune -f >/dev/null 2>&1 || true           # 旧的悬空镜像
+          docker builder prune -f --filter until=168h >/dev/null 2>&1 || true   # 7 天前的构建缓存
+          docker system df
           docker compose ps
 
       - name: Health check

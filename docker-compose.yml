@@ -10,3 +10,9 @@ services:
       # 实际取值来自同目录的 .env（本地手填或由 Gitea Actions 写入）
       AGENT_URL: "${AGENT_URL:?请在 .env 中设置 AGENT_URL}"
       AGENT_TOKEN: "${AGENT_TOKEN:?请在 .env 中设置 AGENT_TOKEN}"
+    # 限制容器日志，避免长期运行把磁盘写满
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
