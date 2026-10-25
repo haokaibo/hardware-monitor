@@ -63,7 +63,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .spark svg{display:block;width:100%;height:34px}
 .kpi[data-metric="cpu"] .spark{color:var(--accent)}
 [data-metric="vram"] .spark{color:var(--amber)}
-.kpi[data-metric="pwr"] .spark{color:var(--accent)}
 .kpi[data-metric="dio"] .spark{color:var(--blue)}
 .kpis + .kpis{margin-top:12px}
 /* 大卡：规格 + 使用率 + 趋势 + 明细 */
@@ -251,11 +250,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
   </section>
 
   <section class="kpis">
-    <div class="kpi" data-metric="pwr">
-      <div class="kpi-name">GPU 功耗</div><div class="kpi-val" id="k-pwr-v">–</div><div class="kpi-sub" id="k-pwr-s">–</div>
-      <div class="kpi-trend" data-trend>最近 60 秒</div>
-      <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-pwr" d=""/><path class="line" id="sp-pwr" d=""/></svg></div>
-    </div>
     <div class="kpi" data-metric="pcie">
       <div class="kpi-name">PCIe 链路</div><div class="kpi-val" id="k-pcie-v">–</div><div class="kpi-sub" id="k-pcie-s">–</div>
     </div>
@@ -341,7 +335,7 @@ function setKpi(id, val, sub, subVal, subKey) {
 
 /* ===== KPI 迷你趋势：前端定长环形缓冲，每秒 1 点，不重复拉历史 ===== */
 const HIST_MAX = 3600;                                  // 1 小时 @1Hz
-const HIST = { cpu: [], gpu: [], vram: [], ram: [], pwr: [], dio: [] };
+const HIST = { cpu: [], gpu: [], vram: [], ram: [], dio: [] };
 const RANGE_TEXT = { 60: '最近 60 秒', 300: '最近 5 分钟', 900: '最近 15 分钟', 3600: '最近 1 小时' };
 let rangeSec = 60;
 let lastMetrics = null;
@@ -359,15 +353,14 @@ function record(m) {
   add('gpu', g.usage);
   add('vram', g.vram_used != null ? g.vram_used / GB : null);
   add('ram', r.used != null ? r.used / GB : null);
-  add('pwr', g.power_w);
   add('dio', m.io ? m.io.read_bps / 1e6 : null);
 }
 
 function drawSparks(m) {
   const g = (m.gpus || [])[0] || {}, r = m.mem || {}, GB = 2 ** 30;
-  const cap = { vram: g.vram_total ? g.vram_total / GB : 0, ram: r.total ? r.total / GB : 0, pwr: g.power_cap_w || 0 };
+  const cap = { vram: g.vram_total ? g.vram_total / GB : 0, ram: r.total ? r.total / GB : 0 };
   const W = 100, H = 30, PAD = 3;
-  for (const k of ['cpu', 'gpu', 'vram', 'ram', 'pwr', 'dio']) {
+  for (const k of ['cpu', 'gpu', 'vram', 'ram', 'dio']) {
     const vals = HIST[k].slice(-rangeSec);
     const line = document.getElementById('sp-' + k), area = document.getElementById('sf-' + k);
     if (!vals.length) { line.setAttribute('d', ''); area.setAttribute('d', ''); continue; }
@@ -404,7 +397,6 @@ function render(m) {
   setKpi('gpu', pct(g.usage), gTemp != null ? gTemp.toFixed(0) + '°C' : '–', gTemp, 't_gpu');
   setKpi('ram', fmt(r.used), '/ ' + fmt(r.total));
   const io = m.io || {}, pc = g.pcie || {}, mbs = b => b == null ? '–' : (b / 1e6).toFixed(1);
-  setKpi('pwr', g.power_w != null ? g.power_w.toFixed(0) + ' W' : '–', g.power_cap_w ? '上限 ' + g.power_cap_w.toFixed(0) + ' W' : '');
   setKpi('pcie', pc.gen ? `Gen${pc.gen} x${pc.width}` : '–', pc.gt ? `${pc.gt} GT/s 单向` : '');
   setKpi('dio', mbs(io.read_bps) + ' MB/s', '写入 ' + mbs(io.write_bps) + ' MB/s');
   record(m);
@@ -428,10 +420,13 @@ function render(m) {
 
   /* ---- GPU ---- */
   $('#gpu-meta').textContent = g.name || '未检测到独立 GPU';
+  const pwrPct = g.power_cap_w ? (g.power_w || 0) / g.power_cap_w * 100 : 0;
   $('#gpu-rows').innerHTML =
-    metric('GPU 使用率', g.power_w != null ? '功耗 ' + g.power_w.toFixed(0) + ' W' : '', g.usage || 0, level(g.usage, 'gpu'), pct(g.usage)) +
+    metric('GPU 使用率', '', g.usage || 0, level(g.usage, 'gpu'), pct(g.usage)) +
     metric('VRAM', g.vram_total ? '可用 ' + fmt(g.vram_total - (g.vram_used || 0)) : '',
-      vramPct, level(vramPct, 'vram'), `${fmt(g.vram_used)} / ${fmt(g.vram_total)}`);
+      vramPct, level(vramPct, 'vram'), `${fmt(g.vram_used)} / ${fmt(g.vram_total)}`) +
+    metric('功耗', g.power_cap_w ? '上限 ' + g.power_cap_w.toFixed(0) + ' W' : '',
+      pwrPct, 'info', g.power_w != null ? g.power_w.toFixed(0) + ' W' : '–');
 
   const order = ['mem', 'edge', 'junction'];
   const keys = { mem: 't_gpu_mem', edge: 't_gpu', junction: 't_gpu_junction' };
