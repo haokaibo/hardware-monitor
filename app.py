@@ -269,9 +269,11 @@ class H(BaseHTTPRequestHandler):
                     return self.send(200, r.read())
             except Exception as e:
                 return self.send(502, json.dumps({"error": f"无法连接 AI PC agent: {e}"}).encode())
-        if path == "/" and MODE == "web":
-            with open(INDEX, "rb") as f:
-                return self.send(200, f.read(), "text/html; charset=utf-8")
+        if path in ("/", "/favicon.svg") and MODE == "web":
+            name = ".html" if path == "/" else path.lstrip("/")
+            ctype = "text/html; charset=utf-8" if path == "/" else "image/svg+xml"
+            with open(os.path.join(os.path.dirname(INDEX), name), "rb") as f:
+                return self.send(200, f.read(), ctype)
         self.send(404, b"{}")
 
 

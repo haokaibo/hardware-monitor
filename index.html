@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI PC 硬件监控</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
 /* ===== 设计变量：颜色表达状态 ===== */
 :root{
@@ -62,7 +63,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .spark{margin-top:2px;color:var(--green)}
 .spark svg{display:block;width:100%;height:34px}
 .kpi[data-metric="cpu"] .spark{color:var(--accent)}
-[data-metric="vram"] .spark{color:var(--amber)}
 /* 大卡：规格 + 使用率 + 趋势 + 明细 */
 .kpis.big{grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
 .kpis.big .kpi{padding:14px 18px 16px;gap:2px}
@@ -72,7 +72,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .kpis.big .kpi-trend{margin-top:10px}
 .kmeta{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.4;margin:1px 0 8px;min-height:15px}
 .krows{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
-.vtrend{margin-top:2px}
 .vtrend .spark svg{height:34px}
 .kpis.big .chips{margin-top:12px}
 /* RAM 卡内嵌 PCIe 链路: 两者共享一张卡, 总高与同行 CPU/GPU 大卡一致 */
@@ -222,9 +221,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       <div class="kpi-trend" data-trend>最近 60 秒</div>
       <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-gpu" d=""/><path class="line" id="sp-gpu" d=""/></svg></div>
       <div class="krows" id="gpu-rows"></div>
-      <div class="kpi-trend vtrend" data-metric="vram"><span>VRAM 趋势</span>
-        <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-vram" d=""/><path class="line" id="sp-vram" d=""/></svg></div>
-      </div>
       <div class="chips" id="gpu-temps"></div>
     </div>
     <div class="kpi" data-metric="ram">
@@ -355,7 +351,6 @@ function render(m) {
   $('#label').textContent = `${m.label || 'AI PC'} · SYSTEM OVERVIEW`;
 
   /* ---- 第一层 ---- */
-  const vramPct = g.vram_total ? g.vram_used / g.vram_total * 100 : 0;
   const ramPct = r.total ? r.used / r.total * 100 : 0;
   setKpi('cpu', pct(c.usage), c.temp != null ? c.temp.toFixed(0) + '°C' : '–', c.temp, 't_cpu');
   setKpi('gpu', pct(g.usage), gTemp != null ? gTemp.toFixed(0) + '°C' : '–', gTemp, 't_gpu');
@@ -384,8 +379,10 @@ function render(m) {
   $('#gpu-meta').textContent = g.name || '未检测到独立 GPU';
   const pwrPct = g.power_cap_w ? (g.power_w || 0) / g.power_cap_w * 100 : 0;
   $('#gpu-rows').innerHTML =
-    metric('VRAM', g.vram_total ? '可用 ' + fmt(g.vram_total - (g.vram_used || 0)) : '',
-      vramPct, level(vramPct, 'vram'), `${fmt(g.vram_used)} / ${fmt(g.vram_total)}`) +
+    `<div class="mrow"><div class="mlabel">VRAM${g.vram_total ? `<small>可用 ${fmt(g.vram_total - (g.vram_used || 0))}</small>` : ''}</div>` +
+    `<div class="mval">${fmt(g.vram_used)} / ${fmt(g.vram_total)}</div></div>` +
+    `<div class="kpi-trend vtrend" data-metric="vram">最近 60 秒</div>` +
+    `<div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-vram" d=""/><path class="line" id="sp-vram" d=""/></svg></div>` +
     metric('功耗', '', pwrPct, 'info', `${g.power_w != null ? g.power_w.toFixed(0) : '–'} W / ${g.power_cap_w ? g.power_cap_w.toFixed(0) + ' W' : '–'}`);
 
   const order = ['mem', 'edge', 'junction'];
