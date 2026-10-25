@@ -40,6 +40,12 @@ jobs:
               ;;
             *) echo "GIT_REPO_URL 需为 http(s):// 开头" >&2; exit 1 ;;
           esac
+          # 诊断（不泄露 token）：确认凭据已注入、token 非空
+          echo "clone 目标: ${GIT_REPO_URL/deploy:*deploy:<token>@}"
+          if [ -z "${DEPLOY_TOKEN:-}" ]; then
+            echo "缺少 Gitea Secret: DEPLOY_TOKEN（可读该仓库的 Gitea token）" >&2
+            exit 1
+          fi
           git clone --depth 1 --branch main "$GIT_REPO_URL" "$WORKDIR/src"
 
           # 2) 同步到部署目录；保留宿主机上的 .env，并兼容未安装 rsync 的机器
