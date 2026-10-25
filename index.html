@@ -62,10 +62,22 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .spark{margin-top:2px;color:var(--green)}
 .spark svg{display:block;width:100%;height:34px}
 .kpi[data-metric="cpu"] .spark{color:var(--accent)}
-.kpi[data-metric="vram"] .spark{color:var(--amber)}
+[data-metric="vram"] .spark{color:var(--amber)}
 .kpi[data-metric="pwr"] .spark{color:var(--accent)}
 .kpi[data-metric="dio"] .spark{color:var(--blue)}
 .kpis + .kpis{margin-top:12px}
+/* 大卡：规格 + 使用率 + 趋势 + 明细 */
+.kpis.big{grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
+.kpis.big .kpi{padding:14px 18px 16px;gap:2px}
+.kpis.big .kpi-val{font-size:36px}
+.kpis.big .kpi-sub{font-size:12px}
+.kpis.big .spark svg{height:54px}
+.kpis.big .kpi-trend{margin-top:10px}
+.kmeta{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.4;margin:1px 0 8px;min-height:15px}
+.krows{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.vtrend{margin-top:2px}
+.vtrend .spark svg{height:34px}
+.kpis.big .chips{margin-top:12px}
 .spark .line{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .spark .area{fill:currentColor;opacity:.10;stroke:none}
 
@@ -88,9 +100,7 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .errbox[open] .etoggle::after{content:" ▴"}
 .edetail{margin-top:7px;padding-top:7px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;line-height:1.55;color:var(--muted);word-break:break-word;white-space:pre-wrap}
 
-/* ===== 第二层：两列结构（左 CPU+内存 / 右 GPU+VRAM） ===== */
-.layout{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);margin-top:var(--gap);align-items:start}
-.col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+/* ===== 模块通用样式 ===== */
 .module{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px 14px;min-width:0}
 .mhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:9px}
 .mhead h2{font-size:16px;font-weight:650;letter-spacing:-.01em;flex:none}
@@ -115,8 +125,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .chip.ok::before{background:var(--green)} .chip.warn::before{background:var(--amber)} .chip.crit::before{background:var(--red)}
 .chip.crit b{color:var(--red)} .chip.warn b{color:var(--amber)}
 
-/* GPU 卡片优先级更高：稍宽、稍亮、留白更大 */
-#gpu-card{border-color:#2c2c30;background:linear-gradient(180deg,#0f0f10,#0b0b0b)}
 
 /* ===== 第三层：存储紧凑列表 ===== */
 .storage{margin-top:var(--gap)}
@@ -186,13 +194,14 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
   :root{--gap:12px}
   .kpi-val{font-size:22px}
 }
+@media (max-width:900px){
+  .kpis.big{grid-template-columns:1fr}
+}
 @media (max-width:820px){
-  .layout{grid-template-columns:1fr}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .nav-label{display:none}
   .disk-sub{display:none}
-  #gpu-card{border-color:var(--line);background:var(--card)}
-}
+  }
 @media (max-width:520px){
   main{padding:12px 14px 24px}
   .nav-inner{padding:0 14px}
@@ -254,27 +263,35 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
     </div>
   </div>
 
-  <!-- 第一层：顶部核心指标 + 迷你趋势 -->
-  <section class="kpis">
+  <!-- 第一层：CPU / GPU / RAM 三张大卡（规格、使用率、趋势、明细合一） -->
+  <section class="kpis big">
     <div class="kpi" data-metric="cpu">
-      <div class="kpi-name">CPU</div><div class="kpi-val" id="k-cpu-v">–</div><div class="kpi-sub" id="k-cpu-s">–</div>
+      <div class="kpi-name">CPU</div>
+      <div class="kmeta" id="cpu-meta">–</div>
+      <div class="kpi-val" id="k-cpu-v">–</div><div class="kpi-sub" id="k-cpu-s">–</div>
       <div class="kpi-trend" data-trend>最近 60 秒</div>
       <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-cpu" d=""/><path class="line" id="sp-cpu" d=""/></svg></div>
+      <div class="krows" id="cpu-rows"></div>
     </div>
     <div class="kpi" data-metric="gpu">
-      <div class="kpi-name">GPU</div><div class="kpi-val" id="k-gpu-v">–</div><div class="kpi-sub" id="k-gpu-s">–</div>
+      <div class="kpi-name">GPU</div>
+      <div class="kmeta" id="gpu-meta">–</div>
+      <div class="kpi-val" id="k-gpu-v">–</div><div class="kpi-sub" id="k-gpu-s">–</div>
       <div class="kpi-trend" data-trend>最近 60 秒</div>
       <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-gpu" d=""/><path class="line" id="sp-gpu" d=""/></svg></div>
-    </div>
-    <div class="kpi" data-metric="vram">
-      <div class="kpi-name">VRAM</div><div class="kpi-val" id="k-vram-v">–</div><div class="kpi-sub" id="k-vram-s">–</div>
-      <div class="kpi-trend" data-trend>最近 60 秒</div>
-      <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-vram" d=""/><path class="line" id="sp-vram" d=""/></svg></div>
+      <div class="krows" id="gpu-rows"></div>
+      <div class="kpi-trend vtrend" data-metric="vram"><span>VRAM 趋势</span>
+        <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-vram" d=""/><path class="line" id="sp-vram" d=""/></svg></div>
+      </div>
+      <div class="chips" id="gpu-temps"></div>
     </div>
     <div class="kpi" data-metric="ram">
-      <div class="kpi-name">RAM</div><div class="kpi-val" id="k-ram-v">–</div><div class="kpi-sub" id="k-ram-s">–</div>
+      <div class="kpi-name">RAM</div>
+      <div class="kmeta">DRAM · Swap</div>
+      <div class="kpi-val" id="k-ram-v">–</div><div class="kpi-sub" id="k-ram-s">–</div>
       <div class="kpi-trend" data-trend>最近 60 秒</div>
       <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-ram" d=""/><path class="line" id="sp-ram" d=""/></svg></div>
+      <div class="krows" id="mem-rows"></div>
     </div>
   </section>
 
@@ -301,26 +318,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 
   <!-- 错误：默认只显示一行，详情可展开 -->
   <div class="errwrap" id="errwrap" hidden></div>
-
-  <!-- 第二层：左 CPU+内存，右 GPU+VRAM -->
-  <section class="layout">
-    <div class="col">
-      <section class="module">
-        <div class="mhead"><h2>处理器</h2><span class="mmeta" id="cpu-meta">–</span></div>
-        <div id="cpu-rows"></div>
-      </section>
-      <section class="module">
-        <div class="mhead"><h2>内存</h2><span class="mmeta">DRAM · Swap</span></div>
-        <div id="mem-rows"></div>
-      </section>
-    </div>
-
-    <section class="module" id="gpu-card">
-      <div class="mhead"><h2>显卡与显存</h2><span class="mmeta" id="gpu-meta">–</span></div>
-      <div id="gpu-rows"></div>
-      <div class="chips" id="gpu-temps"></div>
-    </section>
-  </section>
 
   <!-- LLM：上下文占用 + 最近请求 -->
   <section class="llm-grid" data-llm hidden>
@@ -464,7 +461,6 @@ function render(m) {
   const ramPct = r.total ? r.used / r.total * 100 : 0;
   setKpi('cpu', pct(c.usage), c.temp != null ? c.temp.toFixed(0) + '°C' : '–', c.temp, 't_cpu');
   setKpi('gpu', pct(g.usage), gTemp != null ? gTemp.toFixed(0) + '°C' : '–', gTemp, 't_gpu');
-  setKpi('vram', fmt(g.vram_used), '/ ' + fmt(g.vram_total));
   setKpi('ram', fmt(r.used), '/ ' + fmt(r.total));
   const io = m.io || {}, pc = g.pcie || {}, mbs = b => b == null ? '–' : (b / 1e6).toFixed(1);
   setKpi('pwr', g.power_w != null ? g.power_w.toFixed(0) + ' W' : '–', g.power_cap_w ? '上限 ' + g.power_cap_w.toFixed(0) + ' W' : '');
@@ -560,7 +556,7 @@ function renderReqs(L) {
   $('#req-body').innerHTML = rows.length ? rows.map(reqRow).join('') :
     `<tr><td colspan="8" class="tbl-empty">暂无记录。把客户端的接口地址改成 <b>http://&lt;AI PC 宿主机 IP&gt;:${esc(L.proxy_port)}</b> 后，请求才会出现在这里。</td></tr>`;
   $('#tbl-wrap').classList.toggle('tall', showAll);
-  $('#btn-all').textContent = showAll ? '收起' : (T.count > 500 ? `显示最近 500 条` : `显示全部 (${T.count || 0})`);
+  $('#btn-all').textContent = showAll ? '收起' : `显示全部 (${T.count || 0})`;
   $('#btn-all').hidden = !T.count;
   $('#req-note').textContent = T.count
     ? `自 ${new Date(T.since * 1000).toLocaleString()} 起 · ${T.count} 次请求 · 读取 ${int0(T.prompt)} prompt token` +
@@ -572,8 +568,7 @@ async function loadAll(count) {
   if (allFor === count) return;
   allFor = count;
   try {
-    const lim = Math.min(500, Math.max(1, count));
-    const j = await (await fetch('/api/llm/requests?limit=' + lim, { cache: 'no-store' })).json();
+    const j = await (await fetch('/api/llm/requests?limit=200', { cache: 'no-store' })).json();
     allRows = j.requests || [];
     if (lastMetrics && lastMetrics.llm) renderReqs(lastMetrics.llm);
   } catch (e) { allFor = -1; }
