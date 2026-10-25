@@ -7,7 +7,7 @@
 ```
 
 - **agent**：跑在 AI PC 的 **PVE 宿主机**上（systemd，仅需 python3，无第三方依赖）。传感器和 amdgpu 的 sysfs 在宿主机上，容器里读不到全貌，所以不放容器。
-  配置了 `LLAMA_URL` 后，agent 还会在 `:8081` 开一个 **llama-server 透明代理**并监控推理状态（见下文「LLM 推理监控」）。
+  配置了 `LLAMA_URL` 后，agent 还会每秒轮询 llama-server，采集上下文占用（见下文「LLM 上下文监控」）。
 - **web**：跑在 G3 的容器里，提供页面，并把 `/api/metrics` 转发给 agent（浏览器不直连 AI PC）。
 - 两者是同一个 `app.py`，参数 `agent` / `web` 区分。
 
@@ -38,7 +38,6 @@ curl -H "X-Token: $(grep TOKEN /etc/hwmon-agent.env | cut -d= -f2)" localhost:91
 ```
 
 只允许 G3 访问 9101（PVE 防火墙或 `ufw allow from <G3_IP> to any port 9101`）。
-启用 LLM 代理后，8081 只放行实际要调用模型的客户端（如你的 Mac）。
 
 ## 2. G3：部署 web 容器
 
@@ -90,30 +89,14 @@ docker compose up -d --build
 > 若你的 Docker 宿主机上已有其他标签的 runner，把工作流里的 `runs-on: hwmon-host`
 > 改成那个标签即可。agent 端（第 1 节）仍为手动部署，因为需读取宿主机 sysfs。
 
-## LLM 推理监控（可选）
+## LLM 上下文监控（可选）
 
-页面上的「推理速度 / 上下文占用 / 最近请求」来自 llama-server，设置 agent 的 `LLAMA_URL` 即启用；不设置则这些区块自动隐藏，其余功能不受影响。
+设置 agent 的 `LLAMA_URL` 后，每秒轮询 llama-server 的 `/health`、`/slots`、`/metrics`、`/props`，得到上下文占用（KV 缓存）；不设置则其余功能不受影响。
 
-**两步启用：**
-
-1. llama-server 启动参数加 `--metrics`（`/slots` 默认可用）。
-2. 把客户端（pi、脚本等）的接口地址从 `http://<CT101_IP>:8080` 改成 `http://<PVE宿主机_IP>:8081`。代理会原样转发（含流式），客户端无感。
-
-**数据从哪来：**
-
-| 页面内容 | 来源 |
-|---|---|
-| 最近请求表（prompt / 复用 / 输出 / 预填充 / 解码 / 耗时 / 状态） | 代理解析响应里的 `timings`、`usage`、`finish_reason`；`达到上限` = finish_reason 为 length |
-| 实时 t/s（推理速度卡与趋势图） | 代理统计每秒的流式块数（≈ token） |
-| 上下文占用 | 优先 `/metrics` 的 `kv_cache_tokens`；没有则按上一个请求的 prompt+output 估算 |
-| GPU 功耗上限 / PCIe 链路 / 磁盘读写 | amdgpu sysfs（`power1_cap`、`current_link_speed`）与 `/proc/diskstats`，不依赖 LLAMA_URL |
+llama-server 启动参数加 `--metrics`（`/slots` 默认可用）。
 
 **注意：**
 
-- 只记录数字，**不保存 prompt 和回复内容**。历史存在 SQLite（`LLM_DB`，默认 `/var/lib/hwmon/llm.db`，保留最近 5000 条）。
-- 绕过代理直连 llama-server 的请求，不会出现在请求表里和实时 t/s 里，但上下文占用仍会反映。
-- 代理不做鉴权，与你现在直连 llama-server 一致；用防火墙限制来源。
-- 请求表只覆盖 OpenAI 兼容接口和 llama.cpp 原生 `/completion`；其它接口只记录耗时。
 - 不同版本的 llama-server 的 `/metrics`、`/slots` 字段可能略有差异，取不到的项会显示 `–`。
 - 与 llama.cpp 无关的 Strata 专属指标（专家缓存命中率、PCIe 实时流量）没有对应数据源，因此没有做。
 
@@ -126,9 +109,7 @@ docker compose up -d --build
 | `AGENT_LABEL` | agent | 页面右上角显示的主机名 |
 | `GPU_NAME` | agent | 覆盖显卡显示名（sysfs 通常没有型号） |
 | `INCLUDE_IGPU` | agent | 设为 1 则显示 9600X 核显（默认隐藏 VRAM < 2GB 的） |
-| `LLAMA_URL` | agent | llama-server 地址，设置后启用 LLM 监控与代理，如 `http://<CT101_IP>:8080` |
-| `LLM_PROXY_PORT` | agent | 代理监听端口，默认 8081 |
-| `LLM_DB` | agent | 请求历史 SQLite 路径，默认 `/var/lib/hwmon/llm.db` |
+| `LLAMA_URL` | agent | llama-server 地址，设置后启用 LLM 上下文监控，如 `http://<CT101_IP>:8080` |
 | `PORT` | 两端 | 默认 agent 9101 / web 8080 |
 
 ## 采集来源与已知限制
