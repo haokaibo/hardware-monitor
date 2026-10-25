@@ -89,8 +89,8 @@ def _gen(txt):  # "16.0 GT/s PCIe" -> 4
 def pcie(d):
     p = {"gen": _gen(rd(d + "/current_link_speed")), "width": _num(rd(d + "/current_link_width")),
          "max_gen": _gen(rd(d + "/max_link_speed")), "max_width": _num(rd(d + "/max_link_width"))}
-    if p["gen"] and p["width"]:  # 单向速率(GT/s) x 位宽 = 当前链路单向总带宽(GT/s)
-        p["gt"] = [2.5, 5, 8, 16, 32, 64][p["gen"] - 1] * p["width"]
+    if p["gen"] and p["width"]:  # GT/s = Gb/s/lane, /8 得 GB/s, x 位宽 = 单向总带宽 (GB/s)
+        p["gbps"] = round([2.5, 5, 8, 16, 32, 64][p["gen"] - 1] / 8 * p["width"])
     return p
 
 

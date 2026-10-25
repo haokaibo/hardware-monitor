@@ -397,7 +397,7 @@ function render(m) {
   setKpi('gpu', pct(g.usage), gTemp != null ? gTemp.toFixed(0) + '°C' : '–', gTemp, 't_gpu');
   setKpi('ram', fmt(r.used), '/ ' + fmt(r.total));
   const io = m.io || {}, pc = g.pcie || {}, mbs = b => b == null ? '–' : (b / 1e6).toFixed(1);
-  setKpi('pcie', pc.gen ? `Gen${pc.gen} x${pc.width}` : '–', pc.gt ? `${pc.gt} GT/s 单向` : '');
+  setKpi('pcie', pc.gen ? `Gen${pc.gen} x${pc.width}` : '–', pc.gbps ? `${pc.gbps} GB/s` : '');
   setKpi('dio', mbs(io.read_bps) + ' MB/s', '写入 ' + mbs(io.write_bps) + ' MB/s');
   record(m);
   drawSparks(m);
@@ -425,8 +425,7 @@ function render(m) {
     metric('GPU 使用率', '', g.usage || 0, level(g.usage, 'gpu'), pct(g.usage)) +
     metric('VRAM', g.vram_total ? '可用 ' + fmt(g.vram_total - (g.vram_used || 0)) : '',
       vramPct, level(vramPct, 'vram'), `${fmt(g.vram_used)} / ${fmt(g.vram_total)}`) +
-    metric('功耗', g.power_cap_w ? '上限 ' + g.power_cap_w.toFixed(0) + ' W' : '',
-      pwrPct, 'info', g.power_w != null ? g.power_w.toFixed(0) + ' W' : '–');
+    metric('功耗', '', pwrPct, 'info', `${g.power_w != null ? g.power_w.toFixed(0) : '–'} W / ${g.power_cap_w ? g.power_cap_w.toFixed(0) + ' W' : '–'}`);
 
   const order = ['mem', 'edge', 'junction'];
   const keys = { mem: 't_gpu_mem', edge: 't_gpu', junction: 't_gpu_junction' };
