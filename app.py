@@ -23,8 +23,12 @@ def rd(p):
 
 
 def num(p):
+    return _num(rd(p))
+
+
+def _num(txt):
     try:
-        return int(rd(p))
+        return int(txt)
     except (TypeError, ValueError):
         return None
 
@@ -78,13 +82,16 @@ _GEN = {2.5: 1, 5: 2, 8: 3, 16: 4, 32: 5, 64: 6}
 
 
 def _gen(txt):  # "16.0 GT/s PCIe" -> 4
-    m = re.match(r"([\d.]+)\s*GT/s", txt or "")
+    m = re.search(r"([\d.]+)\s*GT/s", txt or "")
     return _GEN.get(float(m.group(1))) if m else None
 
 
 def pcie(d):
-    return {"gen": _gen(rd(d + "/current_link_speed")), "width": num(d + "/current_link_width"),
-            "max_gen": _gen(rd(d + "/max_link_speed")), "max_width": num(d + "/max_link_width")}
+    p = {"gen": _gen(rd(d + "/current_link_speed")), "width": _num(rd(d + "/current_link_width")),
+         "max_gen": _gen(rd(d + "/max_link_speed")), "max_width": _num(rd(d + "/max_link_width"))}
+    if p["gen"] and p["width"]:  # 单向速率(GT/s) x 位宽 = 当前链路单向总带宽(GT/s)
+        p["gt"] = [2.5, 5, 8, 16, 32, 64][p["gen"] - 1] * p["width"]
+    return p
 
 
 def gpus():
