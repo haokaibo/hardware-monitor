@@ -56,11 +56,12 @@ docker compose up -d --build
 
    | Secret | 说明 |
    |---|---|
+   | `GITEA_REPO_URL` | 仓库克隆地址，如 `http://<GITEA_HOST>:3000/<owner>/<repo>.git`（不含凭据） |
    | `DEPLOY_TOKEN` | 可读该仓库的 Gitea token，供 CI 拉取代码 |
-   | `AGENT_URL` | 如 `http://<AGENT_HOST>:9101` |
+   | `AGENT_URL` | 如 `http://<AI_PC_IP>:9101` |
    | `AGENT_TOKEN` | 与 agent 一致的共享令牌 |
 
-2. **在 Docker 宿主机（<RUNNER_HOST>）注册一个 runner**，标签为 `hwmon-host`：
+2. **在 Docker 宿主机（`<DOCKER_HOST_IP>`）注册一个 runner**，标签为 `hwmon-host`：
 
    ```bash
    # 仓库 Settings → Actions → Runners → 新建 runner，复制 registration token
@@ -90,7 +91,7 @@ docker compose up -d --build
 | 变量 | 位置 | 说明 |
 |---|---|---|
 | `AGENT_TOKEN` | 两端 | 共享令牌；agent 为空则不校验 |
-| `AGENT_URL` | web | agent 地址，如 `http://<EXAMPLE_IP>:9101` |
+| `AGENT_URL` | web | agent 地址，如 `http://<AI_PC_IP>:9101` |
 | `AGENT_LABEL` | agent | 页面右上角显示的主机名 |
 | `GPU_NAME` | agent | 覆盖显卡显示名（sysfs 通常没有型号） |
 | `INCLUDE_IGPU` | agent | 设为 1 则显示 9600X 核显（默认隐藏 VRAM < 2GB 的） |
