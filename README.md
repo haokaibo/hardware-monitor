@@ -92,7 +92,7 @@ docker compose up -d --build
 
 ## LLM 推理监控（可选）
 
-页面上的「模型状态 / 推理速度 / 上下文占用 / 最近请求」来自 llama-server，设置 agent 的 `LLAMA_URL` 即启用；不设置则这些区块自动隐藏，其余功能不受影响。
+页面上的「推理速度 / 上下文占用 / 最近请求」来自 llama-server，设置 agent 的 `LLAMA_URL` 即启用；不设置则这些区块自动隐藏，其余功能不受影响。
 
 **两步启用：**
 
@@ -104,16 +104,14 @@ docker compose up -d --build
 | 页面内容 | 来源 |
 |---|---|
 | 最近请求表（prompt / 复用 / 输出 / 预填充 / 解码 / 耗时 / 状态） | 代理解析响应里的 `timings`、`usage`、`finish_reason`；`达到上限` = finish_reason 为 length |
-| 读取中 / 生成中 / 实时 t/s / 生成进度 | 代理统计流式块（≈ token）；进度 = 已输出 / 请求的 `max_tokens` |
-| 排队中 | `/metrics` 的 `requests_deferred` |
+| 实时 t/s（推理速度卡与趋势图） | 代理统计每秒的流式块数（≈ token） |
 | 上下文占用 | 优先 `/metrics` 的 `kv_cache_tokens`；没有则按上一个请求的 prompt+output 估算 |
-| 模型名 | `/props` |
 | GPU 功耗上限 / PCIe 链路 / 磁盘读写 | amdgpu sysfs（`power1_cap`、`current_link_speed`）与 `/proc/diskstats`，不依赖 LLAMA_URL |
 
 **注意：**
 
 - 只记录数字，**不保存 prompt 和回复内容**。历史存在 SQLite（`LLM_DB`，默认 `/var/lib/hwmon/llm.db`，保留最近 5000 条）。
-- 绕过代理直连 llama-server 的请求，不会出现在请求表里，但状态和上下文占用仍会反映。
+- 绕过代理直连 llama-server 的请求，不会出现在请求表里和实时 t/s 里，但上下文占用仍会反映。
 - 代理不做鉴权，与你现在直连 llama-server 一致；用防火墙限制来源。
 - 请求表只覆盖 OpenAI 兼容接口和 llama.cpp 原生 `/completion`；其它接口只记录耗时。
 - 不同版本的 llama-server 的 `/metrics`、`/slots` 字段可能略有差异，取不到的项会显示 `–`。
