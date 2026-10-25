@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""hwmon — 用法: python3 app.py agent   (AI PC 宿主机: 硬件采集 + 可选的 llama-server 上下文监控)
+"""hwmon — 用法: python3 app.py agent   (AI PC 宿主机, 采集)
                  python3 app.py web     (极摩客 G3 容器, 网页 + 转发)
 只依赖标准库。"""
 import glob, hmac, json, os, re, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.error import HTTPError
-from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "web"
@@ -177,70 +175,6 @@ def loop():
         n += 1
         time.sleep(1)
 
-# ===================== LLM 上下文占用监控 (设置 LLAMA_URL 后启用) =====================
-# 每秒轮询 llama-server 的 /health /slots /metrics /props, 得到上下文占用
-LLAMA = os.environ.get("LLAMA_URL", "").rstrip("/")
-
-
-def _get(path, t=2.0):
-    with urlopen(LLAMA + path, timeout=t) as r:
-        return r.read().decode("utf-8", "replace")
-
-
-def _prom(txt):
-    out = {}
-    for l in txt.splitlines():
-        if l and l[0] != "#":
-            k, _, v = l.partition(" ")
-            try:
-                out[k.replace("llamacpp:", "")] = float(v)
-            except ValueError:
-                pass
-    return out
-
-
-def llm_loop():
-    props, slots, met, n = {}, [], {}, 0
-    reach, loading = False, False
-    while True:
-        try:
-            try:
-                _get("/health")
-                reach, loading = True, False
-            except HTTPError:  # 503 = 模型加载中
-                reach, loading = True, True
-            except Exception:
-                reach = False
-            if reach and not loading:
-                if n % 60 == 0 or not props:
-                    try:
-                        props = json.loads(_get("/props"))
-                    except Exception:
-                        pass
-                if n % 2 == 0:  # /slots /metrics 会排进 llama-server 的任务队列, 降低到 2 秒一次
-                    try:
-                        slots = json.loads(_get("/slots"))
-                    except Exception:
-                        slots = []
-                    try:
-                        met = _prom(_get("/metrics"))
-                    except Exception:
-                        met = {}
-            n += 1
-            # 上下文占用: 优先 /metrics 的 KV 缓存
-            n_ctx = next((s.get("n_ctx") for s in slots if isinstance(s, dict) and s.get("n_ctx")), None) \
-                or (props.get("default_generation_settings") or {}).get("n_ctx")
-            ctx = {"used": None, "total": n_ctx, "src": None}
-            kv_size = n_ctx * max(1, len(slots)) if n_ctx else None
-            if kv_size and met.get("kv_cache_tokens") is not None:
-                ctx.update(used=int(met["kv_cache_tokens"]), total=kv_size, src="kv")
-            elif kv_size and met.get("kv_cache_usage_ratio") is not None:
-                ctx.update(used=round(met["kv_cache_usage_ratio"] * kv_size), total=kv_size, src="kv")
-            STATE["llm"] = {"enabled": True, "reachable": reach, "ctx": ctx, "slots": len(slots)}
-        except Exception as e:
-            STATE["llm"] = {"enabled": True, "reachable": False, "error": repr(e), "ctx": {}}
-        time.sleep(1)
-
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -270,19 +204,18 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(502, json.dumps({"error": f"无法连接 AI PC agent: {e}"}).encode())
         if path in ("/", "/favicon.svg") and MODE == "web":
-            name = ".html" if path == "/" else path.lstrip("/")
+            name = os.path.basename(INDEX) if path == "/" else path.lstrip("/")
             ctype = "text/html; charset=utf-8" if path == "/" else "image/svg+xml"
-            with open(os.path.join(os.path.dirname(INDEX), name), "rb") as f:
-                return self.send(200, f.read(), ctype)
+            try:
+                with open(os.path.join(os.path.dirname(INDEX), name), "rb") as f:
+                    return self.send(200, f.read(), ctype)
+            except OSError:  # 文件缺失时返回 404, 不要让异常断开连接 (nginx 会把它报成 502)
+                return self.send(404, b"{}")
         self.send(404, b"{}")
 
 
 if __name__ == "__main__":
     if MODE == "agent":
         threading.Thread(target=loop, daemon=True).start()
-        if LLAMA:
-            threading.Thread(target=llm_loop, daemon=True).start()
-        else:
-            STATE["llm"] = {"enabled": False}
     port = int(os.environ.get("PORT", 9101 if MODE == "agent" else 8080))
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()

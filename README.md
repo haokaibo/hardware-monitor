@@ -3,12 +3,11 @@
 ## 架构
 
 ```
-浏览器 ──► G3 容器 (web, :8080) ──► AI PC 宿主机 (agent, :9101) ──► /proc、/sys
+浏览器 ──► G3 (web, :8080) ──► AI PC 宿主机 (agent, :9101) ──► /proc、/sys
 ```
 
 - **agent**：跑在 AI PC 的 **PVE 宿主机**上（systemd，仅需 python3，无第三方依赖）。传感器和 amdgpu 的 sysfs 在宿主机上，容器里读不到全貌，所以不放容器。
-  配置了 `LLAMA_URL` 后，agent 还会每秒轮询 llama-server，采集上下文占用（见下文「LLM 上下文监控」）。
-- **web**：跑在 G3 的容器里，提供页面，并把 `/api/metrics` 转发给 agent（浏览器不直连 AI PC）。
+- **web**：跑在 G3 上，提供页面，并把 `/api/metrics` 转发给 agent（浏览器不直连 AI PC）。
 - 两者是同一个 `app.py`，参数 `agent` / `web` 区分。
 
 ## 1. AI PC 宿主机：部署 agent
@@ -19,8 +18,6 @@ echo "drivetemp" > /etc/modules-load.d/drivetemp.conf && modprobe drivetemp   # 
 cat > /etc/hwmon-agent.env <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
 AGENT_LABEL=AI PC
-# 可选：启用 LLM 推理监控（见下文），<CT101_IP> 换成 llama-server 所在容器的 IP
-LLAMA_URL=http://<CT101_IP>:8080
 EOF
 cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
 [Unit]
@@ -44,8 +41,8 @@ curl -H "X-Token: $(grep TOKEN /etc/hwmon-agent.env | cut -d= -f2)" localhost:91
 ```bash
 cd /opt/hwmon
 cp .env.example .env      # 填入 AI PC 的 AGENT_URL 与共享 AGENT_TOKEN
-docker compose up -d --build
-# 浏览器打开 http://<G3_IP>:8080
+set -a; . ./.env; set +a
+python3 app.py web         # 常驻可用 systemd/nohup, 浏览器打开 http://<G3_IP>:8080
 ```
 
 ## 3. Gitea Actions 自动部署（可选）
@@ -89,17 +86,6 @@ docker compose up -d --build
 > 若你的 Docker 宿主机上已有其他标签的 runner，把工作流里的 `runs-on: hwmon-host`
 > 改成那个标签即可。agent 端（第 1 节）仍为手动部署，因为需读取宿主机 sysfs。
 
-## LLM 上下文监控（可选）
-
-设置 agent 的 `LLAMA_URL` 后，每秒轮询 llama-server 的 `/health`、`/slots`、`/metrics`、`/props`，得到上下文占用（KV 缓存）；不设置则其余功能不受影响。
-
-llama-server 启动参数加 `--metrics`（`/slots` 默认可用）。
-
-**注意：**
-
-- 不同版本的 llama-server 的 `/metrics`、`/slots` 字段可能略有差异，取不到的项会显示 `–`。
-- 与 llama.cpp 无关的 Strata 专属指标（专家缓存命中率、PCIe 实时流量）没有对应数据源，因此没有做。
-
 ## 环境变量
 
 | 变量 | 位置 | 说明 |
@@ -109,7 +95,6 @@ llama-server 启动参数加 `--metrics`（`/slots` 默认可用）。
 | `AGENT_LABEL` | agent | 页面右上角显示的主机名 |
 | `GPU_NAME` | agent | 覆盖显卡显示名（sysfs 通常没有型号） |
 | `INCLUDE_IGPU` | agent | 设为 1 则显示 9600X 核显（默认隐藏 VRAM < 2GB 的） |
-| `LLAMA_URL` | agent | llama-server 地址，设置后启用 LLM 上下文监控，如 `http://<CT101_IP>:8080` |
 | `PORT` | 两端 | 默认 agent 9101 / web 8080 |
 
 ## 采集来源与已知限制

@@ -357,9 +357,6 @@ function render(m) {
   setKpi('ram', fmt(r.used), '/ ' + fmt(r.total));
   const pc = g.pcie || {};
   setKpi('pcie', pc.gen ? `Gen${pc.gen} x${pc.width}` : '–', pc.gbps ? `${pc.gbps} GB/s` : '');
-  record(m);
-  drawSparks(m);
-  lastMetrics = m;
 
   /* ---- CPU ---- */
   $('#cpu-meta').textContent = [c.model, c.threads ? c.threads + ' 线程' : ''].filter(Boolean).join(' · ') || '–';
@@ -392,6 +389,11 @@ function render(m) {
   $('#gpu-temps').innerHTML = present.length
     ? present.map(k => chip(k.toUpperCase(), t[k], keys[k], k !== hottest)).join('')
     : '<span class="chip">温度传感器不可用</span>';
+
+  /* 趋势图必须在 gpu-rows 重建之后绘制，否则 VRAM 迷你图会被 innerHTML 清空 */
+  record(m);
+  drawSparks(m);
+  lastMetrics = m;
 
   /* ---- 存储：设备/挂载点 · 使用量 · 温度，每条一行 ---- */
   const disks = m.disks || [];
