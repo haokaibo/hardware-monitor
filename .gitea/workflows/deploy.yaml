@@ -44,6 +44,8 @@ jobs:
             https://*) GIT_REPO_URL="${GIT_REPO_URL/https:/https:deploy:$DEPLOY_TOKEN@}" ;;
             *) echo "GIT_REPO_URL 需为 http(s):// 开头" >&2; exit 1 ;;
           esac
+          # 诊断（不泄露 token）：确认凭据已注入、scheme 正确
+          echo "clone URL（token 已隐藏）: ${GIT_REPO_URL/deploy:*deploy:<token>@}"
           git clone --depth 1 --branch main "$GIT_REPO_URL" "$WORKDIR/src"
 
           # 2) 同步到部署目录；保留宿主机上的 .env，并兼容未安装 rsync 的机器
