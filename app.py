@@ -210,8 +210,8 @@ GEN_PATHS = {"/v1/chat/completions", "/chat/completions", "/v1/completions", "/c
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
        "transfer-encoding", "upgrade", "host", "content-length", "accept-encoding"}
 COLS = ("ts", "status", "prompt", "reused", "output", "prompt_n", "prompt_ms", "pred_n", "pred_ms", "dur", "path")
-ACTIVE, CHUNKS, LAST, _aseq = {}, [0], [None], [0]
-_alock, _dbl, _db = threading.Lock(), threading.Lock(), None
+CHUNKS, LAST = [0], [None]
+_dbl, _db = threading.Lock(), None
 
 
 def db_init():
@@ -321,17 +321,12 @@ class Tap:
         d = ch.get("delta") if isinstance(ch.get("delta"), dict) else {}
         if (d.get("content") or d.get("reasoning_content") or d.get("tool_calls")
                 or (not chs and o.get("content")) or o.get("type") == "content_block_delta"):
-            a = self.act
-            a["chunks"] += 1
+            self.act["chunks"] += 1
             CHUNKS[0] += 1
-            if a["first"] is None:
-                a["first"] = time.time()
 
 
 def _finish(act, tap, path, http_status, aborted, err):
     now = time.time()
-    with _alock:
-        ACTIVE.pop(act["id"], None)
     t = (tap.timings if tap else None) or {}
     u = (tap.usage if tap else None) or {}
     fin = tap.finish if tap else None
@@ -391,17 +386,7 @@ class Proxy(BaseHTTPRequestHandler):
         gen = self.command == "POST" and (path.rstrip("/") or "/") in GEN_PATHS
         act = tap = None
         if gen:
-            mx = None
-            try:
-                j = json.loads(body)
-                mx = j.get("max_tokens") or j.get("n_predict") or j.get("max_completion_tokens")
-            except ValueError:
-                pass
-            with _alock:
-                _aseq[0] += 1
-                act = {"id": _aseq[0], "start": time.time(), "first": None, "chunks": 0,
-                       "max": mx if isinstance(mx, int) and mx > 0 else None}
-                ACTIVE[act["id"]] = act
+            act = {"start": time.time(), "chunks": 0}
         try:
             u = urlparse(LLAMA)
             c = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=3600)
@@ -497,33 +482,9 @@ def llm_loop():
                         met = {}
             n += 1
             now = time.time()
-            live = (CHUNKS[0] - prev_c) / (now - prev_t) if now > prev_t else 0.0
+            live = (CHUNKS[0] - prev_c) / (now - prev_t) if now > prev_t else 0.0  # 流式块/秒 ≈ 实时 t/s
             prev_c, prev_t = CHUNKS[0], now
-            with _alock:
-                acts = [dict(a) for a in ACTIVE.values()]
-            cur = max(acts, key=lambda a: a["start"]) if acts else None
-            queued = int(met.get("requests_deferred") or 0)
-            busy = [s for s in slots if isinstance(s, dict) and s.get("is_processing")]
             last = LAST[0]
-            progress = elapsed = None
-            if not reach or loading:
-                state = "error"
-            elif queued:
-                state = "queued"
-            elif cur:
-                state = "generating" if any(a["first"] for a in acts) else "reading"
-            elif busy:  # 有人绕过代理直连 llama-server
-                nt = busy[0].get("next_token")
-                nt = nt[0] if isinstance(nt, list) and nt else nt
-                state = "generating" if isinstance(nt, dict) and (nt.get("n_decoded") or 0) > 0 else "reading"
-            elif last and last["status"] == "error" and now - last["end"] < 20:
-                state = "error"
-            else:
-                state = "idle"
-            if cur:
-                elapsed = now - cur["start"]
-                if cur["first"] and cur["max"]:
-                    progress = min(1.0, cur["chunks"] / cur["max"])
             # 上下文占用: 优先 /metrics 的 KV 缓存, 否则退回"上一个请求的 prompt+output"
             n_ctx = next((s.get("n_ctx") for s in slots if isinstance(s, dict) and s.get("n_ctx")), None) \
                 or (props.get("default_generation_settings") or {}).get("n_ctx")
@@ -537,13 +498,11 @@ def llm_loop():
                 ctx.update(used=last["prompt"] + (last.get("output") or 0), src="last")
             reqs = recent(15)
             STATE["llm"] = {
-                "enabled": True, "reachable": reach, "loading": loading, "state": state, "queued": queued,
-                "model": os.path.basename(props.get("model_path") or "") or props.get("model_alias"),
-                "live_tps": round(live, 1) if reach else None, "progress": progress, "elapsed": elapsed,
-                "chunks": cur["chunks"] if cur else None, "ctx": ctx, "slots": len(slots),
-                "last": reqs[0] if reqs else None, "requests": reqs, "totals": totals(), "proxy_port": PROXY_PORT}
+                "enabled": True, "reachable": reach, "live_tps": round(live, 1) if reach else None,
+                "ctx": ctx, "slots": len(slots), "last": reqs[0] if reqs else None,
+                "requests": reqs, "totals": totals(), "proxy_port": PROXY_PORT}
         except Exception as e:
-            STATE["llm"] = {"enabled": True, "reachable": False, "state": "error", "error": repr(e),
+            STATE["llm"] = {"enabled": True, "reachable": False, "error": repr(e),
                             "requests": [], "totals": {"count": 0}, "ctx": {}, "proxy_port": PROXY_PORT}
         time.sleep(1)
 

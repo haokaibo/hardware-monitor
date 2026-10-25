@@ -517,8 +517,6 @@ function renderLLM(m) {
   const L = m.llm, on = !!(L && L.enabled);
   document.querySelectorAll('[data-llm]').forEach(e => { e.hidden = !on; });
   if (!on) return;
-  const s = L.state || 'idle', last = L.last;
-
   /* 请求表 */
   renderReqs(L);
   if (showAll) loadAll((L.totals || {}).count);
