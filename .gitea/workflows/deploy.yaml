@@ -39,11 +39,14 @@ jobs:
             exit 1
           fi
           # 把凭据注入 URL：http://host/... -> http://deploy:<token>@host/...
+          # 不用字符串替换（各版本 bash 对 // 的处理不一致），用 %/: 拆分 + 拼接
           case "$GIT_REPO_URL" in
-            http://*)  GIT_REPO_URL="${GIT_REPO_URL/http:/http:deploy:$DEPLOY_TOKEN@}" ;;
-            https://*) GIT_REPO_URL="${GIT_REPO_URL/https:/https:deploy:$DEPLOY_TOKEN@}" ;;
+            http://*|https://*) ;;
             *) echo "GIT_REPO_URL 需为 http(s):// 开头" >&2; exit 1 ;;
           esac
+          SCHEME="${GIT_REPO_URL%%://*}"
+          HOST_PATH="${GIT_REPO_URL#*://}"
+          GIT_REPO_URL="$SCHEME://deploy:$DEPLOY_TOKEN@$HOST_PATH"
           # 诊断（不泄露 token）：确认凭据已注入、scheme 正确
           echo "clone URL（token 已隐藏）: ${GIT_REPO_URL/deploy:*deploy:<token>@}"
           git clone --depth 1 --branch main "$GIT_REPO_URL" "$WORKDIR/src"
