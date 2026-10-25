@@ -9,12 +9,13 @@
 :root{
   --bg:#000; --card:#0c0c0c; --line:#232326; --track:#242428;
   --text:#f5f5f7; --muted:#8e8e93; --dim:#636366;
-  --green:#3ad683; --amber:#f3af3b; --red:#fe5e5f; --accent:#fe7d3f;
+  --green:#3ad683; --amber:#f3af3b; --red:#fe5e5f; --accent:#fe7d3f; --blue:#4aa3ff;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
   --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI","PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
   --radius:12px; --gap:14px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.35;overflow-x:hidden}
 b{font-weight:650}
@@ -62,6 +63,9 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .spark svg{display:block;width:100%;height:34px}
 .kpi[data-metric="cpu"] .spark{color:var(--accent)}
 .kpi[data-metric="vram"] .spark{color:var(--amber)}
+.kpi[data-metric="pwr"] .spark{color:var(--accent)}
+.kpi[data-metric="dio"] .spark{color:var(--blue)}
+.kpis + .kpis{margin-top:12px}
 .spark .line{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .spark .area{fill:currentColor;opacity:.10;stroke:none}
 
@@ -131,8 +135,52 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .empty{color:var(--dim);font-size:12px;padding:6px 0}
 .note{color:var(--dim);font-size:10.5px;font-family:var(--mono);margin-top:10px}
 
+/* ===== 模型状态卡 ===== */
+.state{margin-bottom:12px}
+.state-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.state-top h2{font-size:16px;font-weight:650;letter-spacing:-.01em}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{font-size:11px;padding:2px 9px;border-radius:99px;color:var(--dim);background:rgba(255,255,255,.03);border:1px solid transparent;opacity:.55}
+.pill.on{opacity:1;color:var(--text);border-color:var(--line);background:rgba(255,255,255,.07)}
+.pill.on::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;background:var(--dim)}
+.pill.on.reading::before{background:var(--blue)} .pill.on.generating::before{background:var(--green)}
+.pill.on.queued::before{background:var(--amber)} .pill.on.error::before{background:var(--red)}
+.state-top .mmeta{margin-left:auto}
+.state-row{display:flex;justify-content:space-between;gap:12px;margin-top:10px;font-size:13px}
+.state-row .mmeta{font-size:12px}
+.sbar{height:5px;background:var(--track);border-radius:99px;overflow:hidden;margin-top:9px;position:relative}
+.sbar>i{display:block;height:100%;width:0;border-radius:inherit;background:var(--dim);transition:width .4s linear}
+.sbar>i.reading{background:var(--blue)} .sbar>i.generating{background:var(--green)}
+.sbar>i.queued{background:var(--amber)} .sbar>i.error{background:var(--red)}
+.sbar>i.indet{position:absolute;width:30%;animation:slide 1.4s ease-in-out infinite;transition:none}
+@keyframes slide{0%{left:-30%}100%{left:100%}}
+
+/* ===== 上下文占用 + 最近请求 ===== */
+.llm-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.3fr);gap:var(--gap);margin-top:var(--gap);align-items:start}
+.ringwrap{position:relative;width:150px;height:150px;margin:4px auto 16px}
+.ring{width:100%;height:100%;display:block}
+.ring circle{fill:none;stroke-width:9}
+.ring .rt{stroke:var(--track)}
+.ring .rv{stroke:var(--green);stroke-linecap:round;stroke-dasharray:289.03;stroke-dashoffset:289.03;transition:stroke-dashoffset .5s,stroke .3s}
+.ring.warn .rv{stroke:var(--amber)} .ring.crit .rv{stroke:var(--red)}
+.ringtxt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.ringtxt b{font-size:26px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ringtxt span{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.tbl-wrap{overflow-x:auto}
+.tbl-wrap.tall{max-height:560px;overflow-y:auto}
+.tbl{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:640px}
+.tbl th{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--dim);font-weight:500;text-align:right;padding:4px 10px 8px;white-space:nowrap;position:sticky;top:0;background:var(--card)}
+.tbl td{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:right;padding:8px 10px;border-top:1px solid var(--line);white-space:nowrap}
+.tbl th:nth-child(-n+2),.tbl td:nth-child(-n+2){text-align:left}
+.tbl td:first-child{color:var(--text)}
+.tbl td .dim{color:var(--dim);font-size:10.5px}
+.badge{display:inline-block;font-size:11px;font-family:var(--sans);padding:1px 8px;border-radius:99px;background:rgba(255,255,255,.06);color:var(--muted)}
+.badge.ok{color:var(--green)} .badge.warn{color:var(--amber)} .badge.crit{color:var(--red);background:rgba(254,94,95,.1)}
+.tbl-empty{color:var(--dim);font-size:12px;padding:14px 4px;line-height:1.6}
+
 /* ===== 响应式：宽屏展开，笔记本收紧，窄屏折叠次要信息 ===== */
 @media (max-width:1024px){
+  .llm-grid{grid-template-columns:1fr}
   main{padding:16px 20px 28px}
   .nav-inner{padding:0 20px}
   :root{--gap:12px}
@@ -180,6 +228,21 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 </header>
 
 <main>
+  <!-- 模型状态 (需要 agent 配置 LLAMA_URL) -->
+  <section class="module state" id="state-card" data-llm hidden>
+    <div class="state-top">
+      <h2>模型状态</h2>
+      <div class="pills" id="pills">
+        <span class="pill" data-s="idle">空闲</span><span class="pill" data-s="reading">读取中</span>
+        <span class="pill" data-s="generating">生成中</span><span class="pill" data-s="queued">排队中</span>
+        <span class="pill" data-s="error">错误</span>
+      </div>
+      <span class="mmeta" id="model-name"></span>
+    </div>
+    <div class="state-row"><span id="state-detail">–</span><span class="mmeta" id="state-last"></span></div>
+    <div class="sbar"><i id="sbar"></i></div>
+  </section>
+
   <!-- 趋势时间范围 -->
   <div class="trend-toolbar">
     <div class="tt-left"><span class="tt-title">趋势时间范围</span><span class="tt-live"><i></i>实时更新</span></div>
@@ -215,6 +278,27 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
     </div>
   </section>
 
+  <section class="kpis">
+    <div class="kpi" data-metric="tps" data-llm hidden>
+      <div class="kpi-name">推理速度（解码）</div><div class="kpi-val" id="k-tps-v">–</div><div class="kpi-sub" id="k-tps-s">–</div>
+      <div class="kpi-trend" data-trend>最近 60 秒</div>
+      <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-tps" d=""/><path class="line" id="sp-tps" d=""/></svg></div>
+    </div>
+    <div class="kpi" data-metric="pwr">
+      <div class="kpi-name">GPU 功耗</div><div class="kpi-val" id="k-pwr-v">–</div><div class="kpi-sub" id="k-pwr-s">–</div>
+      <div class="kpi-trend" data-trend>最近 60 秒</div>
+      <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-pwr" d=""/><path class="line" id="sp-pwr" d=""/></svg></div>
+    </div>
+    <div class="kpi" data-metric="pcie">
+      <div class="kpi-name">PCIe 链路</div><div class="kpi-val" id="k-pcie-v">–</div><div class="kpi-sub" id="k-pcie-s">–</div>
+    </div>
+    <div class="kpi" data-metric="dio">
+      <div class="kpi-name">磁盘读取</div><div class="kpi-val" id="k-dio-v">–</div><div class="kpi-sub" id="k-dio-s">–</div>
+      <div class="kpi-trend" data-trend>最近 60 秒</div>
+      <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-dio" d=""/><path class="line" id="sp-dio" d=""/></svg></div>
+    </div>
+  </section>
+
   <!-- 错误：默认只显示一行，详情可展开 -->
   <div class="errwrap" id="errwrap" hidden></div>
 
@@ -235,6 +319,28 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       <div class="mhead"><h2>显卡与显存</h2><span class="mmeta" id="gpu-meta">–</span></div>
       <div id="gpu-rows"></div>
       <div class="chips" id="gpu-temps"></div>
+    </section>
+  </section>
+
+  <!-- LLM：上下文占用 + 最近请求 -->
+  <section class="llm-grid" data-llm hidden>
+    <section class="module">
+      <div class="mhead"><h2>上下文占用</h2><span class="mmeta" id="ctx-meta"></span></div>
+      <div class="ringwrap">
+        <svg class="ring" id="ring" viewBox="0 0 120 120" aria-hidden="true"><circle class="rt" cx="60" cy="60" r="46"/><circle class="rv" id="ring-v" cx="60" cy="60" r="46" transform="rotate(-90 60 60)"/></svg>
+        <div class="ringtxt"><b id="ring-pct">–</b><span id="ring-sub"></span></div>
+      </div>
+      <div id="ctx-bars"></div>
+    </section>
+    <section class="module">
+      <div class="mhead"><h2>最近请求</h2><button class="range" id="btn-all" style="border:1px solid var(--line)">显示全部</button></div>
+      <div class="tbl-wrap" id="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>时间</th><th>状态</th><th>PROMPT</th><th>复用</th><th>输出</th><th>预填充 T/S</th><th>解码 T/S</th><th>耗时</th></tr></thead>
+          <tbody id="req-body"></tbody>
+        </table>
+      </div>
+      <div class="note" id="req-note"></div>
     </section>
   </section>
 
@@ -263,7 +369,7 @@ const pct = v => v == null ? '–' : (v < 1 ? v.toFixed(1) : v.toFixed(0)) + '%'
    window.HW_THRESHOLDS = { t_cpu:{warn:70,crit:85} } */
 const TH = Object.assign({
   cpu:{warn:75,crit:90}, gpu:{warn:80,crit:95}, ram:{warn:80,crit:92}, vram:{warn:85,crit:95},
-  disk:{warn:80,crit:92},
+  disk:{warn:80,crit:92}, ctx:{warn:75,crit:90},
   t_cpu:{warn:75,crit:90},
   t_gpu_mem:{warn:85,crit:95}, t_gpu:{warn:78,crit:90}, t_gpu_junction:{warn:85,crit:100},
   t_nvme:{warn:60,crit:75}, t_ssd:{warn:55,crit:70}, t_hdd:{warn:50,crit:60},
@@ -296,7 +402,7 @@ function setKpi(id, val, sub, subVal, subKey) {
 
 /* ===== KPI 迷你趋势：前端定长环形缓冲，每秒 1 点，不重复拉历史 ===== */
 const HIST_MAX = 3600;                                  // 1 小时 @1Hz
-const HIST = { cpu: [], gpu: [], vram: [], ram: [] };
+const HIST = { cpu: [], gpu: [], vram: [], ram: [], tps: [], pwr: [], dio: [] };
 const RANGE_TEXT = { 60: '最近 60 秒', 300: '最近 5 分钟', 900: '最近 15 分钟', 3600: '最近 1 小时' };
 let rangeSec = 60;
 let lastMetrics = null;
@@ -314,20 +420,23 @@ function record(m) {
   add('gpu', g.usage);
   add('vram', g.vram_used != null ? g.vram_used / GB : null);
   add('ram', r.used != null ? r.used / GB : null);
+  add('tps', m.llm && m.llm.enabled && m.llm.reachable ? m.llm.live_tps : null);
+  add('pwr', g.power_w);
+  add('dio', m.io ? m.io.read_bps / 1e6 : null);
 }
 
 function drawSparks(m) {
   const g = (m.gpus || [])[0] || {}, r = m.mem || {}, GB = 2 ** 30;
-  const cap = { vram: g.vram_total ? g.vram_total / GB : 0, ram: r.total ? r.total / GB : 0 };
+  const cap = { vram: g.vram_total ? g.vram_total / GB : 0, ram: r.total ? r.total / GB : 0, pwr: g.power_cap_w || 0 };
   const W = 100, H = 30, PAD = 3;
-  for (const k of ['cpu', 'gpu', 'vram', 'ram']) {
+  for (const k of ['cpu', 'gpu', 'vram', 'ram', 'tps', 'pwr', 'dio']) {
     const vals = HIST[k].slice(-rangeSec);
     const line = document.getElementById('sp-' + k), area = document.getElementById('sf-' + k);
     if (!vals.length) { line.setAttribute('d', ''); area.setAttribute('d', ''); continue; }
     // 纵轴：CPU/GPU 百分比用 0..max(10,峰值)，便于看波动；VRAM/RAM 用 0..总量，直接看占用
     const peak = Math.max(...vals);
-    const hi = (k === 'cpu' || k === 'gpu')
-      ? Math.min(100, Math.max(10, peak * 1.25))
+    const hi = (k === 'cpu' || k === 'gpu') ? Math.min(100, Math.max(10, peak * 1.25))
+      : (k === 'tps' || k === 'dio') ? Math.max(k === 'tps' ? 10 : 1, peak * 1.25)   // 速度类: 0..峰值, 空闲时是一条贴底的线
       : (cap[k] || Math.max(1, peak * 1.25));
     const y = v => PAD + (1 - Math.min(1, Math.max(0, v / hi))) * (H - 2 * PAD);
     let d;
@@ -357,9 +466,14 @@ function render(m) {
   setKpi('gpu', pct(g.usage), gTemp != null ? gTemp.toFixed(0) + '°C' : '–', gTemp, 't_gpu');
   setKpi('vram', fmt(g.vram_used), '/ ' + fmt(g.vram_total));
   setKpi('ram', fmt(r.used), '/ ' + fmt(r.total));
+  const io = m.io || {}, pc = g.pcie || {}, mbs = b => b == null ? '–' : (b / 1e6).toFixed(1);
+  setKpi('pwr', g.power_w != null ? g.power_w.toFixed(0) + ' W' : '–', g.power_cap_w ? '上限 ' + g.power_cap_w.toFixed(0) + ' W' : '');
+  setKpi('pcie', pc.gen ? `Gen${pc.gen} x${pc.width}` : '–', pc.max_gen ? `最高 Gen${pc.max_gen} x${pc.max_width}` : '');
+  setKpi('dio', mbs(io.read_bps) + ' MB/s', '写入 ' + mbs(io.write_bps) + ' MB/s');
   record(m);
   drawSparks(m);
   lastMetrics = m;
+  renderLLM(m, { g, r, vramPct, ramPct, gTemp });
 
   /* ---- CPU ---- */
   $('#cpu-meta').textContent = [c.model, c.threads ? c.threads + ' 线程' : ''].filter(Boolean).join(' · ') || '–';
@@ -424,6 +538,95 @@ function render(m) {
   }
 }
 
+
+/* ===== LLM 推理监控 ===== */
+const fmtTok = n => n == null ? '–' : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n);
+const fmtCtx = n => n == null ? '–' : n >= 1024 ? Math.round(n / 1024) + 'K' : String(n);
+const int0 = n => n == null ? '–' : Math.round(n).toLocaleString('en-US');
+const hms = ts => { const d = new Date(ts * 1000); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(x => String(x).padStart(2, '0')).join(':'); };
+const ST = { done: ['完成', 'ok'], max_tokens: ['达到上限', 'warn'], aborted: ['已中断', ''], error: ['出错', 'crit'] };
+let showAll = false, allRows = null, allFor = -1;
+
+function reqRow(r) {
+  const [t, c] = ST[r.status] || [r.status, ''];
+  const pr = r.reused > 0 && r.prompt ? ` <span class="dim">${Math.round(r.reused / r.prompt * 100)}%</span>` : '';
+  return `<tr><td>${hms(r.ts)}</td><td><span class="badge ${c}">${esc(t)}</span></td><td>${int0(r.prompt)}</td>` +
+    `<td>${int0(r.reused)}${pr}</td><td>${int0(r.output)}</td><td>${int0(r.prefill_tps)}</td>` +
+    `<td>${r.decode_tps == null ? '–' : r.decode_tps.toFixed(1)}</td><td>${r.dur == null ? '–' : r.dur.toFixed(1) + ' s'}</td></tr>`;
+}
+
+function renderReqs(L) {
+  const T = L.totals || {}, rows = showAll && allRows ? allRows : (L.requests || []).slice(0, 12);
+  $('#req-body').innerHTML = rows.length ? rows.map(reqRow).join('') :
+    `<tr><td colspan="8" class="tbl-empty">暂无记录。把客户端的接口地址改成 <b>http://&lt;AI PC 宿主机 IP&gt;:${esc(L.proxy_port)}</b> 后，请求才会出现在这里。</td></tr>`;
+  $('#tbl-wrap').classList.toggle('tall', showAll);
+  $('#btn-all').textContent = showAll ? '收起' : (T.count > 500 ? `显示最近 500 条` : `显示全部 (${T.count || 0})`);
+  $('#btn-all').hidden = !T.count;
+  $('#req-note').textContent = T.count
+    ? `自 ${new Date(T.since * 1000).toLocaleString()} 起 · ${T.count} 次请求 · 读取 ${int0(T.prompt)} prompt token` +
+      `${T.prefill_tps ? '（均 ' + int0(T.prefill_tps) + ' t/s）' : ''}，其中复用 ${int0(T.reused)} · 生成 ${int0(T.output)} token` +
+      `${T.decode_tps ? '（均 ' + T.decode_tps.toFixed(1) + ' t/s）' : ''}` : '';
+}
+
+async function loadAll(count) {
+  if (allFor === count) return;
+  allFor = count;
+  try {
+    const lim = Math.min(500, Math.max(1, count));
+    const j = await (await fetch('/api/llm/requests?limit=' + lim, { cache: 'no-store' })).json();
+    allRows = j.requests || [];
+    if (lastMetrics && lastMetrics.llm) renderReqs(lastMetrics.llm);
+  } catch (e) { allFor = -1; }
+}
+
+function renderLLM(m, x) {
+  const L = m.llm, on = !!(L && L.enabled);
+  document.querySelectorAll('[data-llm]').forEach(e => { e.hidden = !on; });
+  if (!on) return;
+  const s = L.state || 'idle', last = L.last;
+
+  /* 状态卡 */
+  document.querySelectorAll('#pills .pill').forEach(p => { p.className = 'pill' + (p.dataset.s === s ? ' on ' + s : ''); });
+  $('#model-name').textContent = L.model || '';
+  let d;
+  if (!L.reachable) d = 'llama-server 无法连接，请检查 LLAMA_URL 和服务状态';
+  else if (L.loading) d = '模型加载中…';
+  else if (s === 'queued') d = `${L.queued} 个请求排队中`;
+  else if (s === 'reading') d = '正在读取 prompt' + (L.elapsed != null ? ` · 已用 ${L.elapsed.toFixed(0)} 秒` : '');
+  else if (s === 'generating') d = '正在生成' + (L.chunks != null ? ` · 已输出 ${L.chunks} token` : '') + (L.live_tps ? ` · ${L.live_tps.toFixed(1)} t/s` : '');
+  else if (s === 'error') d = '最近一个请求出错';
+  else d = '等待请求';
+  $('#state-detail').textContent = d;
+  $('#state-last').textContent = last && last.output != null
+    ? `上次：${int0(last.output)} token${last.decode_tps ? ' @ ' + last.decode_tps.toFixed(1) + ' tok/s' : ''}` : '';
+  const bar = $('#sbar'), indet = (s === 'reading' || (s === 'generating' && L.progress == null));
+  bar.className = (indet ? 'indet ' : '') + s;
+  bar.style.width = indet ? '' : (s === 'generating' && L.progress != null ? (L.progress * 100).toFixed(1) + '%' : '0%');
+
+  /* 速度卡: 生成中显示实时, 否则显示上一个请求 */
+  const gen = s === 'generating', dec = gen && L.live_tps ? L.live_tps : (last && last.decode_tps);
+  $('#k-tps-v').textContent = dec ? dec.toFixed(1) + ' t/s' : '–';
+  $('#k-tps-s').textContent = gen ? '生成中 · 实时'
+    : (last && last.prefill_tps ? `预填充 ${int0(last.prefill_tps)} t/s · 上次请求` : '解码 · 上次请求');
+
+  /* 上下文环 + 资源条 */
+  const c = L.ctx || {}, frac = c.used != null && c.total ? c.used / c.total * 100 : null;
+  $('#ring-v').style.strokeDashoffset = 289.03 * (1 - clamp(frac || 0) / 100);
+  $('#ring').setAttribute('class', 'ring ' + level(frac, 'ctx'));
+  $('#ring-pct').textContent = frac == null ? '–' : Math.round(frac) + '%';
+  $('#ring-sub').textContent = frac == null ? '' : `${fmtTok(c.used)} / ${fmtCtx(c.total)}`;
+  $('#ctx-meta').textContent = c.src === 'last' ? '按上次请求估算' : c.src === 'kv' ? 'KV 缓存' : '';
+  const { g, r, vramPct, ramPct, gTemp } = x;
+  $('#ctx-bars').innerHTML =
+    metric('VRAM', '', vramPct, level(vramPct, 'vram'), `${fmt(g.vram_used)} / ${fmt(g.vram_total)}`) +
+    metric('系统内存', '', ramPct, level(ramPct, 'ram'), `${fmt(r.used)} / ${fmt(r.total)}`) +
+    metric('GPU 温度', '', gTemp == null ? 0 : gTemp, level(gTemp, 't_gpu'), gTemp == null ? '–' : gTemp.toFixed(0) + '°C');
+
+  /* 请求表 */
+  renderReqs(L);
+  if (showAll) loadAll((L.totals || {}).count);
+}
+
 /* ===== 错误提示：顶部红点 + 一行说明，详情可展开 ===== */
 function showError(kind, brief, detail) {
   const w = $('#errwrap');
@@ -453,6 +656,11 @@ async function tick() {
 }
 tick();
 setInterval(tick, 1000);
+
+$('#btn-all').addEventListener('click', () => {
+  showAll = !showAll;
+  if (lastMetrics && lastMetrics.llm) { renderReqs(lastMetrics.llm); if (showAll) loadAll(lastMetrics.llm.totals.count); }
+});
 
 /* 时间范围切换：只换渲染窗口，不重新请求数据 */
 $('#ranges').addEventListener('click', e => {
