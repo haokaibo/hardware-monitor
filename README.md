@@ -56,7 +56,7 @@ docker compose up -d --build
 
    | Secret | 说明 |
    |---|---|
-   | `GITEA_REPO_URL` | 仓库克隆地址，如 `http://<GITEA_HOST>:3000/<owner>/<repo>.git`（不含凭据） |
+   | `GIT_REPO_URL` | 仓库克隆地址，如 `http://<GITEA_HOST>:3000/<owner>/<repo>.git`（不含凭据） |
    | `DEPLOY_TOKEN` | 可读该仓库的 Gitea token，供 CI 拉取代码 |
    | `AGENT_URL` | 如 `http://<AI_PC_IP>:9101` |
    | `AGENT_TOKEN` | 与 agent 一致的共享令牌 |

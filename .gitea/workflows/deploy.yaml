@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: Fetch code and rebuild container
         env:
-          GITEA_REPO_URL: ${{ secrets.GITEA_REPO_URL }}
+          GIT_REPO_URL: ${{ secrets.GIT_REPO_URL }}
           DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
           AGENT_URL: ${{ secrets.AGENT_URL }}
           AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
@@ -27,20 +27,20 @@ jobs:
           WORKDIR="$(mktemp -d)"
           trap 'rm -rf "$WORKDIR"' EXIT
 
-          # 1) 拉取 main 分支最新代码（GITEA_REPO_URL 形如 http://host:port/owner/repo.git，不含凭据）
-          if [ -z "${GITEA_REPO_URL:-}" ]; then
-            echo "缺少 Gitea Secret: GITEA_REPO_URL（形如 http://<GITEA_HOST>:3000/<owner>/<repo>.git）" >&2
+          # 1) 拉取 main 分支最新代码（GIT_REPO_URL 形如 http://host:port/owner/repo.git，不含凭据）
+          if [ -z "${GIT_REPO_URL:-}" ]; then
+            echo "缺少 Gitea Secret: GIT_REPO_URL（形如 http://<GITEA_HOST>:3000/<owner>/<repo>.git）" >&2
             exit 1
           fi
           # 把凭据注入 URL：http://host/... -> http://deploy:<token>@host/...
-          scheme="${GITEA_REPO_URL%%://*}"
+          scheme="${GIT_REPO_URL%%://*}"
           case "$scheme" in
             http|https)
-              GITEA_REPO_URL="${GITEA_REPO_URL/$scheme:..$scheme:deploy:$DEPLOY_TOKEN@}"
+              GIT_REPO_URL="${GIT_REPO_URL/$scheme:..$scheme:deploy:$DEPLOY_TOKEN@}"
               ;;
-            *) echo "GITEA_REPO_URL 需为 http(s):// 开头" >&2; exit 1 ;;
+            *) echo "GIT_REPO_URL 需为 http(s):// 开头" >&2; exit 1 ;;
           esac
-          git clone --depth 1 --branch main "$GITEA_REPO_URL" "$WORKDIR/src"
+          git clone --depth 1 --branch main "$GIT_REPO_URL" "$WORKDIR/src"
 
           # 2) 同步到部署目录；保留宿主机上的 .env，并兼容未安装 rsync 的机器
           DEPLOY_DIR=/opt/hwmon
