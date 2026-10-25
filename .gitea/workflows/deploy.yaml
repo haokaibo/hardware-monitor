@@ -40,8 +40,8 @@ jobs:
           fi
           # 把凭据注入 URL：http://host/... -> http://deploy:<token>@host/...
           case "$GIT_REPO_URL" in
-            http://*)  GIT_REPO_URL="${GIT_REPO_URL/http:..http:deploy:$DEPLOY_TOKEN@}" ;;
-            https://*) GIT_REPO_URL="${GIT_REPO_URL/https:..https:deploy:$DEPLOY_TOKEN@}" ;;
+            http://*)  GIT_REPO_URL="${GIT_REPO_URL/http:/http:deploy:$DEPLOY_TOKEN@}" ;;
+            https://*) GIT_REPO_URL="${GIT_REPO_URL/https:/https:deploy:$DEPLOY_TOKEN@}" ;;
             *) echo "GIT_REPO_URL 需为 http(s):// 开头" >&2; exit 1 ;;
           esac
           git clone --depth 1 --branch main "$GIT_REPO_URL" "$WORKDIR/src"
