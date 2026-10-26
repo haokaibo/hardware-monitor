@@ -1,6 +1,6 @@
 # Gitea Actions 自动部署（可选）
 
-本仓库自带的部署工作流：推送 `main` 分支后自动重建并更新 Docker 宿主机上的 `hwmon-web` 容器。工作流源文件见下方（同步到仓库 `.gitea/workflows/deploy.yaml` 即可启用）。
+本仓库自带 Gitea Actions 部署工作流（[`.gitea/workflows/deploy.yaml`](../.gitea/workflows/deploy.yaml)）：推送 `main` 分支后自动重建并更新 Docker 宿主机上的 `hwmon-web` 容器，无需额外配置。工作流内容如下。
 
 ```yaml
 name: deploy-hwmon

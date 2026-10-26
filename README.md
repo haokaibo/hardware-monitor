@@ -119,13 +119,13 @@ Standard library only — no test dependencies to install.
 
 ```bash
 # unit tests (39 cases: data contract, agent sampling, HTTP server, smoke script)
-python3 -m unittest test_app -v
+python3 -m unittest discover -s tests -v
 
 # post-deploy smoke test against a running web instance
-python3 smoke.py http://127.0.0.1:8080 [--token T]
+python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
 ```
 
-- [`contract.py`](contract.py) is the shared data contract between agent and
+- [`tests/contract.py`](tests/contract.py) is the shared data contract between agent and
   frontend (`/api/metrics` field names); both the unit tests and the smoke
   test enforce it, so a rename on one side fails on the other.
 - The agent accepts `HWMON_ROOT` (test-only) to redirect `/proc` and `/sys`
@@ -146,20 +146,22 @@ python3 smoke.py http://127.0.0.1:8080 [--token T]
 ```
 app.py            agent + web server (one file, stdlib only)
 index.html        dashboard (single file, EN/ZH, no build step)
-contract.py       shared /api/metrics data contract
-test_app.py       unit tests (unittest)
-smoke.py          post-deploy smoke test
-fixtures/         sample metric payloads for tests
+tests/            test suite (no third-party deps)
+  contract.py       shared /api/metrics data contract
+  test_app.py       unit tests (unittest)
+  smoke.py          post-deploy smoke test
+  fixtures/         sample metric payloads for tests
 docs/             deployment guides (e.g. Gitea Actions)
+docs/legacy/      pre-refactor single-script monitor & sample data
 Dockerfile / docker-compose.yml   web container
 ```
 
 ### Optional: Gitea Actions auto-deploy
 
-If you self-host Gitea, the repo includes a ready-made workflow that rebuilds
+If you self-host Gitea, the repo ships a ready-made workflow
+([`.gitea/workflows/deploy.yaml`](.gitea/workflows/deploy.yaml)) that rebuilds
 and rolls the web container on every push to `main`. See
-[docs/deployment-ci.md](docs/deployment-ci.md) (copy the workflow to
-`.gitea/workflows/deploy.yaml`).
+[docs/deployment-ci.md](docs/deployment-ci.md) for setup (secrets + runner).
 
 ### License
 
@@ -255,13 +257,13 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 
 ```bash
 # 单元测试（39 个用例：数据契约、agent 采样、HTTP 服务、冒烟脚本）
-python3 -m unittest test_app -v
+python3 -m unittest discover -s tests -v
 
 # 部署后冒烟测试（对运行中的 web 实例）
-python3 smoke.py http://127.0.0.1:8080 [--token T]
+python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
 ```
 
-- [`contract.py`](contract.py) 是 agent 与前端之间的数据契约（`/api/metrics` 字段名），单元测试与冒烟测试都会校验，任何一边改名另一边都会挂。
+- [`tests/contract.py`](tests/contract.py) 是 agent 与前端之间的数据契约（`/api/metrics` 字段名），单元测试与冒烟测试都会校验，任何一边改名另一边都会挂。
 - agent 支持 `HWMON_ROOT`（仅测试用）：把 `/proc`、`/sys` 读取重定向到假目录树，单元测试因此无需真实硬件即可运行。
 
 ### 已知限制
@@ -275,18 +277,20 @@ python3 smoke.py http://127.0.0.1:8080 [--token T]
 ```
 app.py            agent + web 服务（单文件，纯标准库）
 index.html        仪表盘（单文件，中/英双语，无构建步骤）
-contract.py       /api/metrics 数据契约
-test_app.py       单元测试（unittest）
-smoke.py          部署后冒烟测试
-fixtures/         测试用样例数据
+tests/            测试套件（无第三方依赖）
+  contract.py       /api/metrics 数据契约
+  test_app.py       单元测试（unittest）
+  smoke.py          部署后冒烟测试
+  fixtures/         测试用样例数据
 docs/             部署文档（如 Gitea Actions 自动部署）
+docs/legacy/      重构前的单脚本监控与样例数据
 Dockerfile / docker-compose.yml   web 容器
 ```
 
 ### 可选：Gitea Actions 自动部署
 
-如果你自托管 Gitea，仓库附带一个现成的工作流：推送 `main` 后自动重建并滚动更新 web 容器。见
-[docs/deployment-ci.md](docs/deployment-ci.md)（把工作流复制到 `.gitea/workflows/deploy.yaml` 即可）。
+如果你自托管 Gitea，仓库自带一个现成的工作流（[`.gitea/workflows/deploy.yaml`](.gitea/workflows/deploy.yaml)）：推送 `main` 后自动重建并滚动更新 web 容器。配置方法（Secrets + runner）见
+[docs/deployment-ci.md](docs/deployment-ci.md)。
 
 ### 许可证
 

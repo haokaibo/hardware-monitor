@@ -13,8 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 HERE = Path(__file__).resolve().parent
-# 测试原本位于 tests/ 子目录；现与仓库根平铺，若根下存在 index.html 则仓库根即 HERE
-REPO = HERE.parent if (HERE.parent / "index.html").exists() else HERE
+REPO = HERE.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(HERE))
 import app  # noqa: E402
