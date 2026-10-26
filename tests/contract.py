@@ -1,7 +1,7 @@
 """app.py 与 index.html 之间的数据契约: /api/metrics 必须带哪些字段, 前端读取哪些字段。
 单元测试与部署后冒烟测试共用。"""
 
-TOP = ["label", "ts", "cpu", "mem", "gpus", "disks", "error"]
+TOP = ["label", "ts", "version", "cpu", "mem", "gpus", "disks", "error"]
 CPU = ["model", "threads", "usage", "freq_mhz", "load", "temp"]
 MEM = ["total", "used", "swap_total", "swap_used"]
 GPU = ["name", "usage", "vram_total", "vram_used", "temps", "power_w", "power_cap_w", "pcie"]

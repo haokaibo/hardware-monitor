@@ -30,6 +30,8 @@ small{display:block}
 .brand b{font-size:14px;letter-spacing:.2px;white-space:nowrap}
 .sep{width:1px;height:16px;background:var(--line);flex:none}
 .nav-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ver{font-family:var(--mono);font-size:10px;color:var(--dim);white-space:nowrap;letter-spacing:.02em}
+.ver.mismatch{color:var(--amber)}   /* agent 版本与 web 构建不一致 */
 .conn{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap;min-width:0}
 .conn #status{overflow:hidden;text-overflow:ellipsis}
 .nav-right{display:flex;align-items:center;gap:14px;min-width:0}
@@ -196,6 +198,7 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       <span class="nav-label" id="label">AI PC · SYSTEM OVERVIEW</span>
     </div>
     <div class="nav-right">
+      <span class="ver" id="ver"></span>
       <div class="ranges lang" id="lang" role="group" aria-label="Language"><button class="range" data-lang="en">EN</button><button class="range" data-lang="zh">中文</button></div>
       <div class="conn"><span class="dot" id="dot"></span><span id="status">Connecting…</span></div>
     </div>
@@ -369,6 +372,19 @@ let rangeSec = 60;
 let lastMetrics = null;
 let diskSig = '';
 
+/* ===== 版本号：web 构建版本来自 /api/info（CI 每次 push 写入 commit 短 SHA）；
+   agent 版本随 /api/metrics 上报；两者不一致时高亮，提示 agent 未同步更新 ===== */
+let webVer = '';
+fetch('/api/info').then(r => r.json()).then(d => { webVer = d.version || ''; renderVer(); }).catch(() => {});
+function renderVer() {
+  const el = $('#ver');
+  const aVer = lastMetrics && lastMetrics.version;
+  let txt = webVer ? 'v' + webVer : '';
+  if (aVer && aVer !== webVer) txt += (txt ? ' · ' : '') + 'agent v' + aVer;
+  el.textContent = txt;
+  el.classList.toggle('mismatch', !!(webVer && aVer && aVer !== webVer));
+}
+
 function record(m) {
   const c = m.cpu || {}, r = m.mem || {}, g = (m.gpus || [])[0] || {}, GB = 2 ** 30;
   const add = (k, v) => {
@@ -498,6 +514,7 @@ function render(m, fresh = true) {
     $('#disk-meta').textContent = disks.length ? `${tr('disks', shown)} · ${fmt(totalBytes)}` : '';
     $('#disk-note').textContent = rows ? tr('diskNote') : '';
   }
+  renderVer();   // agent 版本随数据到达，可能变化
 }
 
 

@@ -67,9 +67,12 @@ jobs:
           fi
 
           # 3) 用 Gitea Secrets 写入运行时配置；未配置 secrets 时沿用宿主机已有 .env
+          # 版本号 = 当前 commit 短 SHA：每次 push 生成一个新版本，容器启动后展示在页面右上角
+          HWMON_VERSION="$(git -C "$WORKDIR/src" rev-parse --short=7 HEAD)"
           if [ -n "${AGENT_URL:-}" ] && [ -n "${AGENT_TOKEN:-}" ]; then
             umask 077
-            printf 'AGENT_URL=%s\nAGENT_TOKEN=%s\n' "$AGENT_URL" "$AGENT_TOKEN" > "$DEPLOY_DIR/.env"
+            printf 'AGENT_URL=%s\nAGENT_TOKEN=%s\nHWMON_VERSION=%s\n' "$AGENT_URL" "$AGENT_TOKEN" "$HWMON_VERSION" > "$DEPLOY_DIR/.env"
+            echo "HWMON_VERSION=$HWMON_VERSION 已写入 $DEPLOY_DIR/.env"
           fi
           if [ ! -f "$DEPLOY_DIR/.env" ]; then
             echo "缺少 $DEPLOY_DIR/.env，请在仓库 Secrets 配置 AGENT_URL / AGENT_TOKEN" >&2

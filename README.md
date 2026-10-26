@@ -58,6 +58,7 @@ echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe 
 sudo cat > /etc/hwmon-agent.env <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
 AGENT_LABEL=AI PC
+HWMON_VERSION=$(git rev-parse --short=7 HEAD)   # optional: build version shown on the page (short SHA of the commit app.py was copied from)
 EOF
 sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
 [Unit]
@@ -85,7 +86,7 @@ Or with Docker:
 
 ```bash
 docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-stopped \
-  -e AGENT_URL -e AGENT_TOKEN <image>
+  -e AGENT_URL -e AGENT_TOKEN -e HWMON_VERSION <image>
 # or: docker compose up -d --build  (see docker-compose.yml)
 ```
 
@@ -112,6 +113,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 | `GPU_NAME` | agent | override GPU display name (sysfs rarely has a model string) |
 | `INCLUDE_IGPU` | agent | set `1` to also show the CPU iGPU (hidden when VRAM < 2 GB) |
 | `PORT` | both | default: agent 9101 / web 8080 |
+| `HWMON_VERSION` | both | build version shown on the page; CI sets it to the commit short SHA automatically (a new version on every push). For manual deploys set `git rev-parse --short=7 HEAD`; empty shows `dev`. If the agent's version differs from the web build, the page highlights it in amber (agent out of date) |
 
 ### Development & testing
 
@@ -201,6 +203,7 @@ echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe 
 sudo cat > /etc/hwmon-agent.env <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
 AGENT_LABEL=AI PC
+HWMON_VERSION=$(git rev-parse --short=7 HEAD)   # 可选：页面展示的版本号（app.py 来源 commit 的短 SHA）
 EOF
 sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
 [Unit]
@@ -228,7 +231,7 @@ python3 app.py web     # 浏览器打开 http://<web主机>:8080
 
 ```bash
 docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-stopped \
-  -e AGENT_URL -e AGENT_TOKEN <image>
+  -e AGENT_URL -e AGENT_TOKEN -e HWMON_VERSION <image>
 # 或: docker compose up -d --build（见 docker-compose.yml）
 ```
 
@@ -250,6 +253,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 | `GPU_NAME` | agent | 覆盖显卡显示名（sysfs 通常没有型号） |
 | `INCLUDE_IGPU` | agent | 设为 1 则显示核显（默认隐藏 VRAM < 2GB 的） |
 | `PORT` | 两端 | 默认 agent 9101 / web 8080 |
+| `HWMON_VERSION` | 两端 | 页面展示的版本号；CI 自动填 commit 短 SHA（每次 push 一个新版本）。手动部署填 `git rev-parse --short=7 HEAD`，留空显示 `dev`。agent 版本与 web 构建不一致时页面以橙色高亮（提示 agent 未同步更新） |
 
 ### 开发与测试
 

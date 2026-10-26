@@ -11,6 +11,7 @@ TOKEN = os.environ.get("AGENT_TOKEN", "")
 INDEX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 STATE = {}
 ROOT = os.environ.get("HWMON_ROOT", "")  # 仅测试用: 把 /proc、/sys 重定向到假目录; 生产环境为空
+VERSION = os.environ.get("HWMON_VERSION") or "dev"   # 页面展示的版本号; CI 自动填 commit 短 SHA
 
 
 def rd(p):
@@ -171,7 +172,7 @@ def disks():
 
 def sample(n):  # 采一次样; 任何一项抛异常则整次不写入, ts 不前进 (前端据此判断"数据停滞")
     STATE.update(label=os.environ.get("AGENT_LABEL", os.uname().nodename),
-                 ts=time.time(), cpu=cpu(), mem=mem(), gpus=gpus(), error=None)
+                 ts=time.time(), version=VERSION, cpu=cpu(), mem=mem(), gpus=gpus(), error=None)
     if n % 10 == 0:  # 磁盘每 10 秒读一次, 避免频繁唤醒 HDD
         STATE["disks"] = disks()
 
@@ -203,6 +204,8 @@ class H(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/healthz":
             return self.send(200, b"ok", "text/plain")
+        if path == "/api/info":   # 版本号 (web 页面展示; 无需 token)
+            return self.send(200, json.dumps({"version": VERSION}).encode())
         if path == "/api/metrics":
             if MODE == "agent":
                 if TOKEN and not hmac.compare_digest(self.headers.get("X-Token", "").encode(), TOKEN.encode()):

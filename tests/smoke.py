@@ -73,6 +73,17 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         else:
             fail(f"deployed index.html differs from {expect_index} (stale deploy or cached Docker layer?)")
 
+    # 2.5 版本号 (每次 push 一个新版本; 旧版 app.py 没有该接口时只警告)
+    try:
+        st, _, body = fetch(base, "/api/info")
+        v = json.loads(body).get("version", "") if st == 200 else ""
+    except (URLError, OSError, ValueError):
+        st, v = 0, ""
+    if st == 200 and v:
+        ok(f"version: {v}")
+    else:
+        warn(f"/api/info returned HTTP {st} (old app.py without /api/info?)")
+
     # 3. 数据契约 (agent 刚启动时 STATE 可能还是空的, 重试)
     st, body, m = 0, b"", None
     for _ in range(retries):

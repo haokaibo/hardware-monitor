@@ -1,6 +1,7 @@
 {
   "label": "pve-ai",
   "ts": 1761400000.5,
+  "version": "dev",
   "error": null,
   "cpu": {"model": "AMD Ryzen 5 9600X 6-Core Processor", "threads": 12, "usage": 12.5,
           "freq_mhz": 1985, "load": [0.22, 0.23, 0.29], "temp": 40.0},

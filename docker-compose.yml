@@ -10,6 +10,7 @@ services:
       # 实际取值来自同目录的 .env（本地手填或由 Gitea Actions 写入）
       AGENT_URL: "${AGENT_URL:?请在 .env 中设置 AGENT_URL}"
       AGENT_TOKEN: "${AGENT_TOKEN:?请在 .env 中设置 AGENT_TOKEN}"
+      HWMON_VERSION: "${HWMON_VERSION:-dev}"   # 页面展示的版本号；CI 每次 push 自动写入 commit 短 SHA
     # 限制容器日志，避免长期运行把磁盘写满
     logging:
       driver: json-file
