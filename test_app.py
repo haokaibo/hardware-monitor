@@ -8,7 +8,6 @@ import sys
 import tempfile
 import threading
 import unittest
-import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -21,8 +20,6 @@ sys.path.insert(0, str(HERE))
 import app  # noqa: E402
 import contract  # noqa: E402
 import smoke  # noqa: E402
-
-warnings.simplefilter("ignore", ResourceWarning)   # app.py 里 open() 未显式 close, CPython 引用计数会立即回收; 测试输出里不显示
 
 SAMPLE = json.loads((HERE / "fixtures" / "sample_metrics.json").read_text())
 
@@ -263,7 +260,7 @@ class SampleTests(FakeHost):
         app.sample(0)
         ts = app.STATE["ts"]
         (Path(self.root) / "proc/meminfo").unlink()
-        with self.assertRaises(OSError):
+        with self.assertRaises(KeyError):
             app.sample(1)
         self.assertEqual(app.STATE["ts"], ts)              # ts 不前进, 前端才能判断"数据停滞"
 

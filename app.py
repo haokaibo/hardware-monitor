@@ -14,9 +14,15 @@ ROOT = os.environ.get("HWMON_ROOT", "")  # 仅测试用: 把 /proc、/sys 重定
 
 
 def rd(p):
+    txt = read_text(p)
+    return txt.strip() if txt is not None else None
+
+
+def read_text(p):
+    """读取整个文件; 失败 (不存在/无权限) 返回 None。"""
     try:
         with open(p) as f:
-            return f.read().strip()
+            return f.read()
     except OSError:
         return None
 
@@ -49,7 +55,7 @@ _prev = {}
 def cpu():
     global _prev
     cur = {}
-    for l in open(ROOT + "/proc/stat"):
+    for l in (read_text(ROOT + "/proc/stat") or "").splitlines():
         if l.startswith("cpu"):
             p = l.split()
             v = list(map(int, p[1:9]))
@@ -57,7 +63,7 @@ def cpu():
     pct = {k: round(100 * (1 - (i - _prev[k][1]) / (t - _prev[k][0])), 1)
            for k, (t, i) in cur.items() if k in _prev and t > _prev[k][0]}
     _prev = cur
-    model = next((l.split(":", 1)[1].strip() for l in open(ROOT + "/proc/cpuinfo")
+    model = next((l.split(":", 1)[1].strip() for l in (read_text(ROOT + "/proc/cpuinfo") or "").splitlines()
                   if l.startswith("model name")), "CPU")
     fr = [x for x in (num(f) for f in glob.glob(
         ROOT + "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq")) if x]
@@ -71,7 +77,7 @@ def cpu():
 
 
 def mem():
-    m = {l.split(":")[0]: int(l.split()[1]) * 1024 for l in open(ROOT + "/proc/meminfo")}
+    m = {l.split(":")[0]: int(l.split()[1]) * 1024 for l in (read_text(ROOT + "/proc/meminfo") or "").splitlines()}
     return {"total": m["MemTotal"], "avail": m["MemAvailable"],
             "used": m["MemTotal"] - m["MemAvailable"],
             "swap_total": m["SwapTotal"], "swap_used": m["SwapTotal"] - m["SwapFree"]}
@@ -143,7 +149,7 @@ def disks():
                  "size": (num(b + "/size") or 0) * 512,
                  "temp": t.get("Composite", next(iter(t.values()), None)), "fs": []}
     seen = set()
-    for l in open(ROOT + "/proc/mounts"):
+    for l in (read_text(ROOT + "/proc/mounts") or "").splitlines():
         dev, mnt, fst = l.split()[:3]
         if not dev.startswith("/dev/") or fst in ("squashfs", "iso9660"):
             continue

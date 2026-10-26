@@ -15,3 +15,6 @@ venv/
 
 # macOS
 .DS_Store
+
+# Agent / AI 工具本地配置
+.pi/
