@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI PC 硬件监控</title>
+<title>AI PC Hardware Monitor</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
 /* ===== 设计变量：颜色表达状态 ===== */
 :root{
   --bg:#000; --card:#0c0c0c; --line:#232326; --track:#242428;
   --text:#f5f5f7; --muted:#8e8e93; --dim:#636366;
-  --green:#3ad683; --amber:#f3af3b; --red:#fe5e5f; --accent:#fe7d3f; --blue:#4aa3ff;
+  --green:#3ad683; --amber:#f5c842; --orange:#ff8a3d; --red:#fe5e5f; --accent:#fe7d3f; --blue:#4aa3ff;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
   --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI","PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
   --radius:12px; --gap:14px;
@@ -30,10 +30,12 @@ small{display:block}
 .brand b{font-size:14px;letter-spacing:.2px;white-space:nowrap}
 .sep{width:1px;height:16px;background:var(--line);flex:none}
 .nav-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.conn{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap;flex:none}
+.conn{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap;min-width:0}
+.conn #status{overflow:hidden;text-overflow:ellipsis}
+.nav-right{display:flex;align-items:center;gap:14px;min-width:0}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
 .dot.ok{background:var(--green);box-shadow:0 0 0 3px rgba(58,214,131,.14)}
-.dot.warn{background:var(--amber);box-shadow:0 0 0 3px rgba(243,175,59,.14)}
+.dot.warn{background:var(--amber);box-shadow:0 0 0 3px rgba(245,200,66,.14)}
 .dot.err{background:var(--red);box-shadow:0 0 0 3px rgba(254,94,95,.16);animation:pulse 1.6s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.4}}
 
@@ -62,7 +64,7 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .kpi-trend{margin-top:7px;font-family:var(--mono);font-size:10px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .spark{margin-top:2px;color:var(--green)}
 .spark svg{display:block;width:100%;height:34px}
-.kpi[data-metric="cpu"] .spark{color:var(--accent)}
+.spark.warn{color:var(--amber)} .spark.high{color:var(--orange)} .spark.crit{color:var(--red)}
 /* 大卡：规格 + 使用率 + 趋势 + 明细 */
 .kpis.big{grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
 .kpis.big .kpi{padding:14px 18px 16px;gap:2px}
@@ -85,7 +87,7 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .errwrap[hidden]{display:none}
 .errbox{border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-size:12px;background:var(--card)}
 .errbox.red{border-color:rgba(254,94,95,.38);background:rgba(254,94,95,.06)}
-.errbox.amber{border-color:rgba(243,175,59,.35);background:rgba(243,175,59,.05)}
+.errbox.amber{border-color:rgba(245,200,66,.35);background:rgba(245,200,66,.05)}
 .errbox summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;color:var(--muted);min-height:20px}
 .errbox summary::-webkit-details-marker{display:none}
 .errbox summary b{color:var(--text);font-weight:600}
@@ -113,7 +115,7 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 .bar{height:5px;background:var(--track);border-radius:99px;overflow:hidden;margin:4px 0 9px}
 .bar:last-child{margin-bottom:0}
 .bar>i{display:block;height:100%;width:0;border-radius:inherit;transition:width .5s cubic-bezier(.4,0,.2,1),background .3s}
-.bar>i.ok{background:var(--green)} .bar>i.warn{background:var(--amber)}
+.bar>i.ok{background:var(--green)} .bar>i.warn{background:var(--amber)} .bar>i.high{background:var(--orange)}
 .bar>i.crit{background:var(--red)} .bar>i.info{background:var(--blue)}
 
 /* GPU 温度：内联小标签，不再各占一条进度条 */
@@ -169,9 +171,14 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
   .disk-use{font-size:11px}
   .disk-temp{min-width:38px}
   .chip.opt{display:none}          /* 窄屏折叠次要温度 */
+  .sep{display:none}
+  .nav-right{gap:10px}
   .spark svg{height:28px}
   .trend-toolbar{flex-wrap:wrap;gap:8px}
   .tt-live{display:none}
+}
+@media (max-width:420px){
+  .brand b{display:none}
 }
 @media (max-width:380px){
   .kpis{grid-template-columns:1fr}
@@ -188,19 +195,22 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       <span class="sep"></span>
       <span class="nav-label" id="label">AI PC · SYSTEM OVERVIEW</span>
     </div>
-    <div class="conn"><span class="dot" id="dot"></span><span id="status">连接中…</span></div>
+    <div class="nav-right">
+      <div class="ranges lang" id="lang" role="group" aria-label="Language"><button class="range" data-lang="en">EN</button><button class="range" data-lang="zh">中文</button></div>
+      <div class="conn"><span class="dot" id="dot"></span><span id="status">Connecting…</span></div>
+    </div>
   </div>
 </header>
 
 <main>
   <!-- 趋势时间范围 -->
   <div class="trend-toolbar">
-    <div class="tt-left"><span class="tt-title">趋势时间范围</span><span class="tt-live"><i></i>实时更新</span></div>
+    <div class="tt-left"><span class="tt-title" data-i18n="trendWindow">Trend window</span><span class="tt-live"><i></i><span data-i18n="live">Live</span></span></div>
     <div class="ranges" id="ranges">
-      <button class="range on" data-sec="60">60 秒</button>
-      <button class="range" data-sec="300">5 分钟</button>
-      <button class="range" data-sec="900">15 分钟</button>
-      <button class="range" data-sec="3600">1 小时</button>
+      <button class="range on" data-sec="60" data-i18n="r60">60 s</button>
+      <button class="range" data-sec="300" data-i18n="r300">5 min</button>
+      <button class="range" data-sec="900" data-i18n="r900">15 min</button>
+      <button class="range" data-sec="3600" data-i18n="r3600">1 hr</button>
     </div>
   </div>
 
@@ -210,7 +220,7 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       <div class="kpi-name">CPU</div>
       <div class="kmeta" id="cpu-meta">–</div>
       <div class="kpi-val" id="k-cpu-v">–</div><div class="kpi-sub" id="k-cpu-s">–</div>
-      <div class="kpi-trend" data-k="cpu">最近 60 秒</div>
+      <div class="kpi-trend" data-k="cpu">Last 60 s</div>
       <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-cpu" d=""/><path class="line" id="sp-cpu" d=""/></svg></div>
       <div class="krows" id="cpu-rows"></div>
     </div>
@@ -218,7 +228,7 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       <div class="kpi-name">GPU</div>
       <div class="kmeta" id="gpu-meta">–</div>
       <div class="kpi-val" id="k-gpu-v">–</div><div class="kpi-sub" id="k-gpu-s">–</div>
-      <div class="kpi-trend" data-k="gpu">最近 60 秒</div>
+      <div class="kpi-trend" data-k="gpu">Last 60 s</div>
       <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-gpu" d=""/><path class="line" id="sp-gpu" d=""/></svg></div>
       <div class="krows" id="gpu-rows"></div>
       <div class="chips" id="gpu-temps"></div>
@@ -227,11 +237,11 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       <div class="kpi-name">RAM</div>
       <div class="kmeta">DRAM · Swap</div>
       <div class="kpi-val" id="k-ram-v">–</div><div class="kpi-sub" id="k-ram-s">–</div>
-      <div class="kpi-trend" data-k="ram">最近 60 秒</div>
+      <div class="kpi-trend" data-k="ram">Last 60 s</div>
       <div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-ram" d=""/><path class="line" id="sp-ram" d=""/></svg></div>
       <div class="krows" id="mem-rows"></div>
       <div class="kpi-pcie">
-        <div class="kpi-name">PCIe 链路</div><div class="kpi-val" id="k-pcie-v">–</div><div class="kpi-sub" id="k-pcie-s">–</div>
+        <div class="kpi-name" data-i18n="pcieLink">PCIe Link</div><div class="kpi-val" id="k-pcie-v">–</div><div class="kpi-sub" id="k-pcie-s">–</div>
       </div>
     </div>
   </section>
@@ -241,7 +251,7 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
 
   <!-- 第三层：存储紧凑列表 -->
   <section class="module storage">
-    <div class="mhead"><h2>存储设备</h2><span class="mmeta" id="disk-meta">–</span></div>
+    <div class="mhead"><h2 data-i18n="storage">Storage</h2><span class="mmeta" id="disk-meta">–</span></div>
     <div id="disk-list"></div>
     <div class="note" id="disk-note"></div>
   </section>
@@ -259,11 +269,66 @@ const fmtDisk = b => { // 同一行统一用 GB，避免 GB/TB 混排，也便�
 };
 const pct = v => v == null ? '–' : (v < 1 ? v.toFixed(1) : v.toFixed(0)) + '%';
 
+/* ===== 多语言：默认英文，右上角切换，选择记入 localStorage ===== */
+const I18N = {
+  en: {
+    title: 'AI PC Hardware Monitor', overview: 'SYSTEM OVERVIEW', langLabel: 'Language',
+    trendWindow: 'Trend window', live: 'Live',
+    r60: '60 s', r300: '5 min', r900: '15 min', r3600: '1 hr',
+    last60: 'Last 60 s', last300: 'Last 5 min', last900: 'Last 15 min', last3600: 'Last 1 hr',
+    peak: 'Peak', scale: 'Scale',
+    pcieLink: 'PCIe Link', storage: 'Storage',
+    connecting: 'Connecting…', online: 'System online', disconnected: 'Disconnected',
+    stalledStatus: s => `Data stalled ${s} s`,
+    threads: n => `${n} threads`, load: 'Load',
+    usage: 'Usage', freq: 'Frequency', temp: 'Temperature',
+    sysMem: 'System memory', swapSpace: 'Swap space',
+    noGpu: 'No discrete GPU detected', free: 'Free', power: 'Power', tempUnavail: 'Temp sensors unavailable',
+    driveSize: 'Drive size',
+    disks: n => `${n} ${n === 1 ? 'disk' : 'disks'}`, noDisks: 'No disks detected',
+    diskNote: 'Model and filesystem are in the subtitle / hover tooltip; temperature is the reading for the whole physical drive.',
+    details: 'Details',
+    errConn: 'Agent connection failed', errStale: 'Agent data stalled', errPartial: 'Some sensor data unavailable',
+    staleDetail: s => `No new samples for ${s} s; showing the last data received.\nCheck the agent process on the AI PC host.`,
+    timeout: 'Request timed out (no response in 4 s)', reach: 'Cannot reach AI PC agent'
+  },
+  zh: {
+    title: 'AI PC 硬件监控', overview: '系统概览', langLabel: '语言',
+    trendWindow: '趋势时间范围', live: '实时更新',
+    r60: '60 秒', r300: '5 分钟', r900: '15 分钟', r3600: '1 小时',
+    last60: '最近 60 秒', last300: '最近 5 分钟', last900: '最近 15 分钟', last3600: '最近 1 小时',
+    peak: '峰值', scale: '量程',
+    pcieLink: 'PCIe 链路', storage: '存储设备',
+    connecting: '连接中…', online: '系统在线', disconnected: '连接中断',
+    stalledStatus: s => `数据停滞 ${s} 秒`,
+    threads: n => `${n} 线程`, load: '负载',
+    usage: '使用率', freq: '频率', temp: '温度',
+    sysMem: '系统内存', swapSpace: '交换分区',
+    noGpu: '未检测到独立 GPU', free: '可用', power: '功耗', tempUnavail: '温度传感器不可用',
+    driveSize: '设备容量',
+    disks: n => `${n} 块磁盘`, noDisks: '未检测到可用磁盘',
+    diskNote: '设备型号与文件系统见副标题 / 悬停提示；温度为该物理盘整盘读数。',
+    details: '查看详情',
+    errConn: 'Agent 连接失败', errStale: 'Agent 数据停滞', errPartial: '部分传感器数据不可用',
+    staleDetail: s => `已 ${s} 秒没有新的采样，页面显示的是最后一次数据。\n请检查 AI PC 宿主机上的 agent 进程。`,
+    timeout: '请求超时（4 秒无响应）', reach: '无法连接 AI PC agent'
+  }
+};
+let lang = 'en';
+try { const saved = localStorage.getItem('hw_lang'); if (saved === 'en' || saved === 'zh') lang = saved; } catch (_) {}
+const tr = (k, ...a) => {
+  const v = (I18N[lang] || I18N.en)[k] ?? I18N.en[k] ?? k;
+  return typeof v === 'function' ? v(...a) : v;
+};
+// 后端（app.py 代理）返回的中文错误前缀，英文界面下替换为英文
+const localizeErr = msg => lang === 'en' ? String(msg).replace(/^无法连接 AI PC agent:\s*/, tr('reach') + ': ') : msg;
+
 /* ===== 可配置阈值：正常 / 接近阈值 / 超过阈值 =====
    可通过 window.HW_THRESHOLDS 在页面外覆盖，例如：
    window.HW_THRESHOLDS = { t_cpu:{warn:70,crit:85} } */
 const TH = Object.assign({
-  cpu:{warn:75,crit:90}, gpu:{warn:80,crit:95}, ram:{warn:80,crit:92}, vram:{warn:85,crit:95},
+  cpu:{warn:31,high:61,crit:91}, gpu:{warn:31,high:61,crit:91}, ram:{warn:31,high:61,crit:91}, vram:{warn:31,high:61,crit:91},   // 使用率四档：≤30% 绿，31–60% 黄，61–90% 橘，≥91% 红
+ 
   disk:{warn:80,crit:92}, ctx:{warn:75,crit:90},
   t_cpu:{warn:75,crit:90},
   t_gpu_mem:{warn:85,crit:95}, t_gpu:{warn:78,crit:90}, t_gpu_junction:{warn:85,crit:100},
@@ -273,7 +338,8 @@ const TH = Object.assign({
 
 const level = (v, key) => {
   const t = TH[key]; if (!t || v == null) return 'ok';
-  return v >= t.crit ? 'crit' : v >= t.warn ? 'warn' : 'ok';
+  if (t.high != null) v = Math.round(v);          // 四档指标按页面显示的整数百分比判断（30.6% 显示为 31%，即黄色）
+  return v >= t.crit ? 'crit' : (t.high != null && v >= t.high) ? 'high' : v >= t.warn ? 'warn' : 'ok';
 };
 
 /* 一行指标 + 细进度条 */
@@ -298,7 +364,7 @@ function setKpi(id, val, sub, subVal, subKey) {
 /* ===== KPI 迷你趋势：前端定长环形缓冲，每秒 1 点，不重复拉历史 ===== */
 const HIST_MAX = 3600;                                  // 1 小时 @1Hz
 const HIST = { cpu: [], gpu: [], vram: [], ram: [] };
-const RANGE_TEXT = { 60: '最近 60 秒', 300: '最近 5 分钟', 900: '最近 15 分钟', 3600: '最近 1 小时' };
+const RANGE_TEXT = sec => tr('last' + sec);
 let rangeSec = 60;
 let lastMetrics = null;
 let diskSig = '';
@@ -326,13 +392,15 @@ function drawSparks(m) {
   for (const k of ['cpu', 'gpu', 'vram', 'ram']) {
     const vals = HIST[k].slice(-rangeSec);
     const line = document.getElementById('sp-' + k), area = document.getElementById('sf-' + k);
-    if (!vals.length) { line.setAttribute('d', ''); area.setAttribute('d', ''); setTrend(k, RANGE_TEXT[rangeSec]); continue; }
+    if (!vals.length) { line.setAttribute('d', ''); area.setAttribute('d', ''); setTrend(k, RANGE_TEXT(rangeSec)); continue; }
     // 纵轴：CPU/GPU 百分比用 0..max(10,峰值)，便于看波动；VRAM/RAM 用 0..总量，直接看占用
     const peak = Math.max(...vals);
     const hi = (k === 'cpu' || k === 'gpu') ? Math.min(100, Math.max(10, peak * 1.25))
       : (cap[k] || Math.max(1, peak * 1.25));
     const isPct = k === 'cpu' || k === 'gpu';
-    setTrend(k, `${RANGE_TEXT[rangeSec]} · 峰值 ${isPct ? fp(peak) + '%' : peak.toFixed(1) + ' GB'} · 量程 0–${isPct ? fp(hi) + '%' : hi.toFixed(1) + ' GB'}`);
+    setTrend(k, `${RANGE_TEXT(rangeSec)} · ${tr('peak')} ${isPct ? fp(peak) + '%' : peak.toFixed(1) + ' GB'} · ${tr('scale')} 0–${isPct ? fp(hi) + '%' : hi.toFixed(1) + ' GB'}`);
+    const cur = vals[vals.length - 1], curPct = isPct ? cur : (cap[k] ? cur / cap[k] * 100 : 0);
+    line.closest('.spark').className = 'spark ' + level(curPct, k);   // 曲线颜色随当前使用率变化
     const y = v => PAD + (1 - Math.min(1, Math.max(0, v / hi))) * (H - 2 * PAD);
     let d;
     if (vals.length === 1) {
@@ -351,7 +419,7 @@ function render(m, fresh = true) {
   const t = g.temps || {};
   const gTemp = t.edge != null ? t.edge : (Object.values(t).length ? Math.max(...Object.values(t)) : null);
 
-  $('#label').textContent = `${m.label || 'AI PC'} · SYSTEM OVERVIEW`;
+  $('#label').textContent = `${m.label || 'AI PC'} · ${tr('overview')}`;
 
   /* ---- 第一层 ---- */
   const ramPct = r.total ? r.used / r.total * 100 : 0;
@@ -362,30 +430,28 @@ function render(m, fresh = true) {
   setKpi('pcie', pc.gen ? `Gen${pc.gen} x${pc.width}` : '–', pc.gbps ? `${pc.gbps} GB/s` : '');
 
   /* ---- CPU ---- */
-  $('#cpu-meta').textContent = [c.model, c.threads ? c.threads + ' 线程' : ''].filter(Boolean).join(' · ') || '–';
+  $('#cpu-meta').textContent = [(c.model || '').replace(/\s+\d+-Core Processor/i, ''), c.threads ? tr('threads', c.threads) : ''].filter(Boolean).join(' · ') || '–';
   const load = (c.load || []).map(x => x.toFixed(2)).join(' / ');
   $('#cpu-rows').innerHTML =
-    metric('使用率', load ? '负载 ' + load : '', c.usage || 0, level(c.usage, 'cpu'), pct(c.usage)) +
-    (c.freq_mhz != null ? metric('频率', '', c.freq_mhz / TH.freq_max * 100, 'info', c.freq_mhz + ' MHz') : '') +
-    metric('温度', 'Tctl / Package', c.temp == null ? 0 : c.temp, level(c.temp, 't_cpu'), c.temp == null ? '–' : c.temp.toFixed(0) + '°C');
+    metric(tr('usage'), load ? tr('load') + ' ' + load : '', c.usage || 0, level(c.usage, 'cpu'), pct(c.usage)) +
+    (c.freq_mhz != null ? metric(tr('freq'), '', c.freq_mhz / TH.freq_max * 100, 'info', c.freq_mhz + ' MHz') : '') +
+    metric(tr('temp'), 'Tctl / Package', c.temp == null ? 0 : c.temp, level(c.temp, 't_cpu'), c.temp == null ? '–' : c.temp.toFixed(0) + '°C');
 
   /* ---- 内存 ---- */
   const swapPct = r.swap_total ? r.swap_used / r.swap_total * 100 : 0;
   $('#mem-rows').innerHTML =
-    metric('DRAM', '系统内存', ramPct, level(ramPct, 'ram'), `${fmt(r.used)} / ${fmt(r.total)}`) +
-    (r.swap_total ? metric('Swap', '交换分区', swapPct, level(swapPct, 'ram'), `${fmt(r.swap_used)} / ${fmt(r.swap_total)}`) : '');
+    metric('DRAM', tr('sysMem'), ramPct, level(ramPct, 'ram'), `${fmt(r.used)} / ${fmt(r.total)}`) +
+    (r.swap_total ? metric('Swap', tr('swapSpace'), swapPct, level(swapPct, 'ram'), `${fmt(r.swap_used)} / ${fmt(r.swap_total)}`) : '');
 
   /* ---- GPU ---- */
-  $('#gpu-meta').textContent = g.name || '未检测到独立 GPU';
-  const vramPct = g.vram_total ? (g.vram_used || 0) / g.vram_total * 100 : 0;
+  $('#gpu-meta').textContent = g.name || tr('noGpu');
   const pwrPct = g.power_cap_w ? (g.power_w || 0) / g.power_cap_w * 100 : 0;
   $('#gpu-rows').innerHTML =
-    `<div class="mrow"><div class="mlabel">VRAM${g.vram_total ? `<small>可用 ${fmt(g.vram_total - (g.vram_used || 0))}</small>` : ''}</div>` +
+    `<div class="mrow"><div class="mlabel">VRAM${g.vram_total ? `<small>${tr('free')} ${fmt(g.vram_total - (g.vram_used || 0))}</small>` : ''}</div>` +
     `<div class="mval">${fmt(g.vram_used)} / ${fmt(g.vram_total)}</div></div>` +
-    `<div class="bar"><i class="${level(vramPct, 'vram')}" style="width:${clamp(vramPct)}%"></i></div>` +
-    `<div class="kpi-trend vtrend" data-k="vram">${RANGE_TEXT[rangeSec]}</div>` +
+    `<div class="kpi-trend vtrend" data-k="vram">${RANGE_TEXT(rangeSec)}</div>` +
     `<div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="area" id="sf-vram" d=""/><path class="line" id="sp-vram" d=""/></svg></div>` +
-    metric('功耗', '', pwrPct, 'info', `${g.power_w != null ? g.power_w.toFixed(0) : '–'} W / ${g.power_cap_w ? g.power_cap_w.toFixed(0) + ' W' : '–'}`);
+    metric(tr('power'), '', pwrPct, 'info', `${g.power_w != null ? g.power_w.toFixed(0) : '–'} W / ${g.power_cap_w ? g.power_cap_w.toFixed(0) + ' W' : '–'}`);
 
   const order = ['mem', 'edge', 'junction'];
   const keys = { mem: 't_gpu_mem', edge: 't_gpu', junction: 't_gpu_junction' };
@@ -393,7 +459,7 @@ function render(m, fresh = true) {
   const hottest = present.slice().sort((a, b) => t[b] - t[a])[0];
   $('#gpu-temps').innerHTML = present.length
     ? present.map(k => chip(k.toUpperCase(), t[k], keys[k], k !== hottest)).join('')
-    : '<span class="chip">温度传感器不可用</span>';
+    : `<span class="chip">${esc(tr('tempUnavail'))}</span>`;
 
   /* 趋势图必须在 gpu-rows 重建之后绘制，否则 VRAM 迷你图会被 innerHTML 清空 */
   if (fresh) record(m);               // 数据停滞时不重复写入历史
@@ -413,7 +479,7 @@ function render(m, fresh = true) {
     totalBytes += d.size || 0;
     fs.forEach((f, i) => {
       const frac = f.total ? f.used / f.total * 100 : 0;
-      const info = [d.model || d.name, f.fstype, '设备容量 ' + fmt(d.size), '可用 ' + fmt(f.avail)].filter(Boolean).join(' · ');
+      const info = [d.model || d.name, f.fstype, tr('driveSize') + ' ' + fmt(d.size), tr('free') + ' ' + fmt(f.avail)].filter(Boolean).join(' · ');
       rows += `<div class="disk${i ? ' sub' : ''}" title="${esc(info)}">
         <div class="disk-main">
           <div class="disk-name">${esc(d.kind)} · <span class="mnt">${esc(f.mount)}</span>
@@ -428,9 +494,9 @@ function render(m, fresh = true) {
   const sig = JSON.stringify(disks);
   if (sig !== diskSig) {                       // 磁盘 10s 才变一次，避免每秒重建 DOM
     diskSig = sig;
-    $('#disk-list').innerHTML = rows || '<p class="empty">未检测到可用磁盘</p>';
-    $('#disk-meta').textContent = disks.length ? `${shown} 块磁盘 · ${fmt(totalBytes)}` : '';
-    $('#disk-note').textContent = rows ? '设备型号与文件系统见副标题 / 悬停提示；温度为该物理盘整盘读数。' : '';
+    $('#disk-list').innerHTML = rows || `<p class="empty">${esc(tr('noDisks'))}</p>`;
+    $('#disk-meta').textContent = disks.length ? `${tr('disks', shown)} · ${fmt(totalBytes)}` : '';
+    $('#disk-note').textContent = rows ? tr('diskNote') : '';
   }
 }
 
@@ -440,11 +506,21 @@ function showError(kind, brief, detail) {
   const w = $('#errwrap');
   w.hidden = false;
   w.innerHTML = `<details class="errbox ${kind}">
-    <summary><span class="edot"></span><b>${esc(brief)}</b><span class="ebrief">${esc(detail).split('\n')[0]}</span><span class="etoggle">查看详情</span></summary>
+    <summary><span class="edot"></span><b>${esc(brief)}</b><span class="ebrief">${esc(detail).split('\n')[0]}</span><span class="etoggle">${esc(tr('details'))}</span></summary>
     <div class="edetail">${esc(detail)}</div>
   </details>`;
 }
 function clearError() { $('#errwrap').hidden = true; $('#errwrap').innerHTML = ''; }
+
+/* ===== 错误与状态：保存"生成函数"，切换语言时可直接重绘 ===== */
+let errState = null;
+let renderStatus = () => { $('#dot').className = 'dot'; $('#status').textContent = tr('connecting'); };
+function showErr() {
+  if (!errState) return clearError();
+  showError(errState.kind, tr(errState.brief), localizeErr(errState.detail()));
+}
+function setErr(kind, brief, detail) { errState = { kind, brief, detail }; showErr(); }
+function clearErr() { errState = null; clearError(); }
 
 /* ===== 轮询：请求结束后再排下一次（不叠加），4 秒超时；检测 agent 数据是否停滞 ===== */
 const STALE_MS = 5000;
@@ -466,26 +542,58 @@ async function tick() {
     const stale = now - lastTsAt > STALE_MS;
 
     render(m, fresh);
-    const clock = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const clock = new Date().toLocaleTimeString('en-GB', { hour12: false });
     if (stale) {
       const sec = Math.round((now - lastTsAt) / 1000);
-      $('#dot').className = 'dot warn';
-      $('#status').textContent = `数据停滞 ${sec} 秒 · ${clock}`;
-      showError('amber', 'Agent 数据停滞', `已 ${sec} 秒没有新的采样，页面显示的是最后一次数据。\n请检查 AI PC 宿主机上的 agent 进程。` + (m.error ? '\n' + m.error : ''));
+      renderStatus = () => { $('#dot').className = 'dot warn'; $('#status').textContent = `${tr('stalledStatus', sec)} · ${clock}`; };
+      setErr('amber', 'errStale', () => tr('staleDetail', sec) + (m.error ? '\n' + m.error : ''));
     } else {
-      $('#dot').className = 'dot ok';
-      $('#status').textContent = '系统在线 · ' + clock;
-      if (m.error) showError('amber', '部分传感器数据不可用', m.error); else clearError();
+      renderStatus = () => { $('#dot').className = 'dot ok'; $('#status').textContent = `${tr('online')} · ${clock}`; };
+      if (m.error) setErr('amber', 'errPartial', () => m.error); else clearErr();
     }
+    renderStatus();
   } catch (e) {
-    $('#dot').className = 'dot err';
-    $('#status').textContent = '连接中断';
-    showError('red', 'Agent 连接失败', e.name === 'AbortError' ? '请求超时（4 秒无响应）' : e.message);
+    renderStatus = () => { $('#dot').className = 'dot err'; $('#status').textContent = tr('disconnected'); };
+    renderStatus();
+    setErr('red', 'errConn', e.name === 'AbortError' ? () => tr('timeout') : () => e.message);
   } finally {
     clearTimeout(to);
     timer = setTimeout(tick, 1000);
   }
 }
+
+/* ===== 语言切换 ===== */
+function applyStatic() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.title = tr('title');
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = tr(el.dataset.i18n); });
+  document.querySelectorAll('[data-k]').forEach(el => { el.textContent = RANGE_TEXT(rangeSec); });
+  $('#label').textContent = `${(lastMetrics && lastMetrics.label) || 'AI PC'} · ${tr('overview')}`;
+  const lg = $('#lang');
+  lg.setAttribute('aria-label', tr('langLabel'));
+  lg.querySelectorAll('.range').forEach(b => {
+    const on = b.dataset.lang === lang;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on);
+  });
+}
+function setLang(l) {
+  if (l === lang) return;
+  lang = l;
+  try { localStorage.setItem('hw_lang', l); } catch (_) {}
+  applyStatic();
+  renderStatus();
+  showErr();
+  diskSig = '';                                   // 强制重绘存储区（含副标题与备注）
+  if (lastMetrics) render(lastMetrics, false);    // 用最近一次数据重绘，不写入历史
+}
+$('#lang').addEventListener('click', e => {
+  const b = e.target.closest('[data-lang]');
+  if (b) setLang(b.dataset.lang);
+});
+
+applyStatic();
+renderStatus();
 tick();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });   // 切回标签页立即刷新
 
@@ -494,7 +602,7 @@ $('#ranges').addEventListener('click', e => {
   const btn = e.target.closest('.range');
   if (!btn) return;
   rangeSec = +btn.dataset.sec;
-  document.querySelectorAll('.range').forEach(x => x.classList.toggle('on', x === btn));
+  document.querySelectorAll('#ranges .range').forEach(x => x.classList.toggle('on', x === btn));
   if (lastMetrics) drawSparks(lastMetrics);
 });
 </script>
