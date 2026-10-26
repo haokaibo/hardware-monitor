@@ -204,8 +204,11 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
     </div>
   </div>
 </header>
+  <!-- 错误：默认只显示一行，详情可展开 -->
 
 <main>
+  <div class="errwrap" id="errwrap" hidden></div>
+  
   <!-- 趋势时间范围 -->
   <div class="trend-toolbar">
     <div class="tt-left"><span class="tt-title" data-i18n="trendWindow">Trend window</span><span class="tt-live"><i></i><span data-i18n="live">Live</span></span></div>
@@ -248,9 +251,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       </div>
     </div>
   </section>
-
-  <!-- 错误：默认只显示一行，详情可展开 -->
-  <div class="errwrap" id="errwrap" hidden></div>
 
   <!-- 第三层：存储紧凑列表 -->
   <section class="module storage">
