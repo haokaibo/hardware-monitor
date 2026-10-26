@@ -54,7 +54,8 @@ jobs:
           GIT_REPO_URL="$SCHEME://deploy:$DEPLOY_TOKEN@$HOST_PATH"
           # 诊断（不泄露 token）：确认凭据已注入、scheme 正确
           echo "clone URL（token 已隐藏）: ${GIT_REPO_URL/deploy:*deploy:<token>@}"
-          git clone --depth 1 --branch main "$GIT_REPO_URL" "$WORKDIR/src"
+          # 完整 clone (不用 --depth 1)：版本号需要总 commit 数作为 build 号
+          git clone --branch main "$GIT_REPO_URL" "$WORKDIR/src"
 
           # 2) 同步到部署目录；保留宿主机上的 .env，并兼容未安装 rsync 的机器
           DEPLOY_DIR=/opt/hwmon
@@ -72,8 +73,9 @@ jobs:
           fi
 
           # 3) 用 Gitea Secrets 写入运行时配置；未配置 secrets 时沿用宿主机已有 .env
-          # 版本号 = 当前 commit 短 SHA：每次 push 生成一个新版本，容器启动后展示在页面右上角
-          HWMON_VERSION="$(git -C "$WORKDIR/src" rev-parse --short=7 HEAD)"
+          # 版本号 = major.minor (VERSION 文件, 手动升) + build 号 (总 commit 数, 每次 push 自动 +1)
+          # 形如 1.0.123; 容器启动后展示在页面右上角
+          HWMON_VERSION="$(cut -d. -f1,2 "$WORKDIR/src/VERSION").$(git -C "$WORKDIR/src" rev-list --count HEAD)"
           if [ -n "${AGENT_URL:-}" ] && [ -n "${AGENT_TOKEN:-}" ]; then
             umask 077
             printf 'AGENT_URL=%s\nAGENT_TOKEN=%s\nHWMON_VERSION=%s\n' "$AGENT_URL" "$AGENT_TOKEN" "$HWMON_VERSION" > "$DEPLOY_DIR/.env"

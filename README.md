@@ -58,7 +58,7 @@ echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe 
 sudo cat > /etc/hwmon-agent.env <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
 AGENT_LABEL=AI PC
-HWMON_VERSION=$(git rev-parse --short=7 HEAD)   # optional: build version shown on the page (short SHA of the commit app.py was copied from)
+HWMON_VERSION=$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)   # optional: build version shown on the page (major.minor.build of the commit app.py was copied from)
 EOF
 sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
 [Unit]
@@ -113,7 +113,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 | `GPU_NAME` | agent | override GPU display name (sysfs rarely has a model string) |
 | `INCLUDE_IGPU` | agent | set `1` to also show the CPU iGPU (hidden when VRAM < 2 GB) |
 | `PORT` | both | default: agent 9101 / web 8080 |
-| `HWMON_VERSION` | both | build version shown on the page; CI sets it to the commit short SHA automatically (a new version on every push). For manual deploys set `git rev-parse --short=7 HEAD`; empty shows `dev`. If the agent's version differs from the web build, the page highlights it in amber (agent out of date) |
+| `HWMON_VERSION` | both | build version shown on the page, format `major.minor.build` (e.g. `1.0.123`). CI sets it automatically: `major.minor` from the `VERSION` file (bump it manually for releases) + build number = total commits (increments on every push). For manual deploys set `$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)`; empty shows `dev`. If the agent's version differs from the web build, the page highlights it in amber (agent out of date) |
 
 ### Development & testing
 
@@ -148,6 +148,7 @@ python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
 ```
 app.py            agent + web server (one file, stdlib only)
 index.html        dashboard (single file, EN/ZH, no build step)
+VERSION           major.minor base (e.g. 1.0.0); build number = total commits
 tests/            test suite (no third-party deps)
   contract.py       shared /api/metrics data contract
   test_app.py       unit tests (unittest)
@@ -203,7 +204,7 @@ echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe 
 sudo cat > /etc/hwmon-agent.env <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
 AGENT_LABEL=AI PC
-HWMON_VERSION=$(git rev-parse --short=7 HEAD)   # 可选：页面展示的版本号（app.py 来源 commit 的短 SHA）
+HWMON_VERSION=$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)   # 可选：页面展示的版本号（app.py 来源 commit 的 major.minor.build）
 EOF
 sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
 [Unit]
@@ -253,7 +254,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 | `GPU_NAME` | agent | 覆盖显卡显示名（sysfs 通常没有型号） |
 | `INCLUDE_IGPU` | agent | 设为 1 则显示核显（默认隐藏 VRAM < 2GB 的） |
 | `PORT` | 两端 | 默认 agent 9101 / web 8080 |
-| `HWMON_VERSION` | 两端 | 页面展示的版本号；CI 自动填 commit 短 SHA（每次 push 一个新版本）。手动部署填 `git rev-parse --short=7 HEAD`，留空显示 `dev`。agent 版本与 web 构建不一致时页面以橙色高亮（提示 agent 未同步更新） |
+| `HWMON_VERSION` | 两端 | 页面展示的版本号，格式 `major.minor.build`（如 `1.0.123`）。CI 自动填写：`major.minor` 取自 `VERSION` 文件（发版时手动升），build 号 = 总 commit 数（每次 push 自动 +1）。手动部署填 `$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)`，留空显示 `dev`。agent 版本与 web 构建不一致时页面以橙色高亮（提示 agent 未同步更新） |
 
 ### 开发与测试
 
@@ -281,6 +282,7 @@ python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
 ```
 app.py            agent + web 服务（单文件，纯标准库）
 index.html        仪表盘（单文件，中/英双语，无构建步骤）
+VERSION           major.minor 基础版本（如 1.0.0）；build 号 = 总 commit 数
 tests/            测试套件（无第三方依赖）
   contract.py       /api/metrics 数据契约
   test_app.py       单元测试（unittest）

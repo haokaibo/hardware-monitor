@@ -372,7 +372,7 @@ let rangeSec = 60;
 let lastMetrics = null;
 let diskSig = '';
 
-/* ===== 版本号：web 构建版本来自 /api/info（CI 每次 push 写入 commit 短 SHA）；
+/* ===== 版本号（major.minor.build）：web 构建版本来自 /api/info（CI 每次 push 自动写入）；
    agent 版本随 /api/metrics 上报；两者不一致时高亮，提示 agent 未同步更新 ===== */
 let webVer = '';
 fetch('/api/info').then(r => r.json()).then(d => { webVer = d.version || ''; renderVer(); }).catch(() => {});

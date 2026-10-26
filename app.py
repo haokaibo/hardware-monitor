@@ -11,7 +11,7 @@ TOKEN = os.environ.get("AGENT_TOKEN", "")
 INDEX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 STATE = {}
 ROOT = os.environ.get("HWMON_ROOT", "")  # 仅测试用: 把 /proc、/sys 重定向到假目录; 生产环境为空
-VERSION = os.environ.get("HWMON_VERSION") or "dev"   # 页面展示的版本号; CI 自动填 commit 短 SHA
+VERSION = os.environ.get("HWMON_VERSION") or "dev"   # 页面展示的版本号 (major.minor.build); CI 自动填写
 
 
 def rd(p):
