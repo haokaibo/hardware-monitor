@@ -30,7 +30,8 @@ small{display:block}
 .brand b{font-size:14px;letter-spacing:.2px;white-space:nowrap}
 .sep{width:1px;height:16px;background:var(--line);flex:none}
 .nav-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ver{font-family:var(--mono);font-size:10px;color:var(--dim);white-space:nowrap;letter-spacing:.02em}
+.ver{position:fixed;right:12px;bottom:8px;z-index:9;font-family:var(--mono);font-size:10px;color:var(--dim);white-space:nowrap;letter-spacing:.02em;background:rgba(0,0,0,.55);padding:2px 7px;border-radius:99px;pointer-events:auto}
+.ver:empty{display:none}
 .ver.mismatch{color:var(--amber)}   /* agent 版本与 web 构建不一致 */
 .conn{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap;min-width:0}
 .conn #status{overflow:hidden;text-overflow:ellipsis}
@@ -198,7 +199,6 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
       <span class="nav-label" id="label">AI PC · SYSTEM OVERVIEW</span>
     </div>
     <div class="nav-right">
-      <span class="ver" id="ver"></span>
       <div class="ranges lang" id="lang" role="group" aria-label="Language"><button class="range" data-lang="en">EN</button><button class="range" data-lang="zh">中文</button></div>
       <div class="conn"><span class="dot" id="dot"></span><span id="status">Connecting…</span></div>
     </div>
@@ -259,6 +259,8 @@ main{max-width:1440px;margin:0 auto;padding:18px 28px 34px}
     <div class="note" id="disk-note"></div>
   </section>
 </main>
+
+<span class="ver" id="ver"></span>   <!-- 版本号：右下角，agent 与 web 不一致时高亮 -->
 
 <script>
 const $ = s => document.querySelector(s);
