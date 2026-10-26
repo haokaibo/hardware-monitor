@@ -327,7 +327,7 @@ const localizeErr = msg => lang === 'en' ? String(msg).replace(/^无法连接 AI
    可通过 window.HW_THRESHOLDS 在页面外覆盖，例如：
    window.HW_THRESHOLDS = { t_cpu:{warn:70,crit:85} } */
 const TH = Object.assign({
-  cpu:{warn:31,high:61,crit:91}, gpu:{warn:31,high:61,crit:91}, ram:{warn:31,high:61,crit:91}, vram:{warn:31,high:61,crit:91},   // 使用率四档：≤30% 绿，31–60% 黄，61–90% 橘，≥91% 红
+  cpu:{warn:55,high:75,crit:90}, gpu:{warn:55,high:75,crit:90}, ram:{warn:55,high:75,crit:90}, vram:{warn:55,high:75,crit:90},   // 使用率四档：≤54% 绿，55–74% 黄，75–89% 橘，≥90% 红
  
   disk:{warn:80,crit:92}, ctx:{warn:75,crit:90},
   t_cpu:{warn:75,crit:90},

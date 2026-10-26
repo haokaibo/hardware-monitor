@@ -10,6 +10,7 @@ MODE = sys.argv[1] if len(sys.argv) > 1 else "web"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 INDEX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 STATE = {}
+ROOT = os.environ.get("HWMON_ROOT", "")  # 仅测试用: 把 /proc、/sys 重定向到假目录; 生产环境为空
 
 
 def rd(p):
@@ -48,7 +49,7 @@ _prev = {}
 def cpu():
     global _prev
     cur = {}
-    for l in open("/proc/stat"):
+    for l in open(ROOT + "/proc/stat"):
         if l.startswith("cpu"):
             p = l.split()
             v = list(map(int, p[1:9]))
@@ -56,11 +57,11 @@ def cpu():
     pct = {k: round(100 * (1 - (i - _prev[k][1]) / (t - _prev[k][0])), 1)
            for k, (t, i) in cur.items() if k in _prev and t > _prev[k][0]}
     _prev = cur
-    model = next((l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo")
+    model = next((l.split(":", 1)[1].strip() for l in open(ROOT + "/proc/cpuinfo")
                   if l.startswith("model name")), "CPU")
     fr = [x for x in (num(f) for f in glob.glob(
-        "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq")) if x]
-    hm = [d for d in glob.glob("/sys/class/hwmon/hwmon*")
+        ROOT + "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq")) if x]
+    hm = [d for d in glob.glob(ROOT + "/sys/class/hwmon/hwmon*")
           if rd(d + "/name") in ("k10temp", "coretemp", "zenpower")]
     t = temps(hm)
     temp = t.get("Tctl") or t.get("Package id 0") or t.get("Tdie") or (max(t.values()) if t else None)
@@ -70,7 +71,7 @@ def cpu():
 
 
 def mem():
-    m = {l.split(":")[0]: int(l.split()[1]) * 1024 for l in open("/proc/meminfo")}
+    m = {l.split(":")[0]: int(l.split()[1]) * 1024 for l in open(ROOT + "/proc/meminfo")}
     return {"total": m["MemTotal"], "avail": m["MemAvailable"],
             "used": m["MemTotal"] - m["MemAvailable"],
             "swap_total": m["SwapTotal"], "swap_used": m["SwapTotal"] - m["SwapFree"]}
@@ -94,7 +95,7 @@ def pcie(d):
 
 def gpus():
     out = []
-    for c in sorted(glob.glob("/sys/class/drm/card[0-9]*")):
+    for c in sorted(glob.glob(ROOT + "/sys/class/drm/card[0-9]*")):
         if not re.fullmatch(r"card\d+", os.path.basename(c)):
             continue
         d = c + "/device"
@@ -118,7 +119,7 @@ def gpus():
 
 
 def parents(n, depth=0):  # dm-/lvm/分区 -> 物理盘
-    b = "/sys/class/block/" + n
+    b = ROOT + "/sys/class/block/" + n
     if depth > 5 or not os.path.isdir(b):
         return []
     sl = os.listdir(b + "/slaves") if os.path.isdir(b + "/slaves") else []
@@ -131,10 +132,10 @@ def parents(n, depth=0):  # dm-/lvm/分区 -> 物理盘
 
 def disks():
     ds = {}
-    for n in sorted(os.listdir("/sys/block")):
+    for n in sorted(os.listdir(ROOT + "/sys/block")):
         if re.match(r"(loop|ram|zd|dm-|sr|nbd|zram|md)", n):
             continue
-        b = "/sys/block/" + n
+        b = ROOT + "/sys/block/" + n
         t = temps(glob.glob(b + "/device/hwmon*") + glob.glob(b + "/device/hwmon/hwmon*")
                   + glob.glob(b + "/device/device/hwmon*"))
         kind = "NVMe" if n.startswith("nvme") else ("HDD" if rd(b + "/queue/rotational") == "1" else "SSD")
@@ -142,7 +143,7 @@ def disks():
                  "size": (num(b + "/size") or 0) * 512,
                  "temp": t.get("Composite", next(iter(t.values()), None)), "fs": []}
     seen = set()
-    for l in open("/proc/mounts"):
+    for l in open(ROOT + "/proc/mounts"):
         dev, mnt, fst = l.split()[:3]
         if not dev.startswith("/dev/") or fst in ("squashfs", "iso9660"):
             continue
@@ -162,14 +163,18 @@ def disks():
     return list(ds.values())
 
 
+def sample(n):  # 采一次样; 任何一项抛异常则整次不写入, ts 不前进 (前端据此判断"数据停滞")
+    STATE.update(label=os.environ.get("AGENT_LABEL", os.uname().nodename),
+                 ts=time.time(), cpu=cpu(), mem=mem(), gpus=gpus(), error=None)
+    if n % 10 == 0:  # 磁盘每 10 秒读一次, 避免频繁唤醒 HDD
+        STATE["disks"] = disks()
+
+
 def loop():
     n = 0
     while True:
         try:
-            STATE.update(label=os.environ.get("AGENT_LABEL", os.uname().nodename),
-                         ts=time.time(), cpu=cpu(), mem=mem(), gpus=gpus(), error=None)
-            if n % 10 == 0:  # 磁盘每 10 秒读一次, 避免频繁唤醒 HDD
-                STATE["disks"] = disks()
+            sample(n)
         except Exception as e:
             STATE["error"] = repr(e)
         n += 1
@@ -194,7 +199,7 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, b"ok", "text/plain")
         if path == "/api/metrics":
             if MODE == "agent":
-                if TOKEN and not hmac.compare_digest(self.headers.get("X-Token", ""), TOKEN):
+                if TOKEN and not hmac.compare_digest(self.headers.get("X-Token", "").encode(), TOKEN.encode()):
                     return self.send(401, b'{"error":"unauthorized"}')
                 return self.send(200, json.dumps(STATE).encode())
             try:
