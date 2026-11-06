@@ -264,9 +264,9 @@ class SampleTests(FakeHost):
         self.assertEqual(app.STATE["ts"], ts)              # ts 不前进, 前端才能判断"数据停滞"
 
     def test_label_from_env(self):
-        os.environ["AGENT_LABEL"] = "pve-ai"
+        os.environ["AGENT_LABEL"] = "host-a"
         app.sample(0)
-        self.assertEqual(app.STATE["label"], "pve-ai")
+        self.assertEqual(app.STATE["label"], "host-a")
 
 
 # ---------------------------------------------------------------- 数据契约
