@@ -15,18 +15,19 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Pinned runner image instead of `ubuntu-latest`: GitHub announced that the
-# `ubuntu-latest` label migrates to Ubuntu 26 on 2026-10-19, which would silently
-# change the toolchain under us.
 env:
-  RUNNER_OS_IMAGE: ubuntu-24.04
   UV_LINK_MODE: copy
   UV_COMPILE_BYTECODE: 1
 
+# NOTE: `runs-on` cannot read the `env` context — referencing env there makes the
+# whole workflow invalid and the run fails in 0s with zero jobs. The image is
+# therefore written literally on each job; keep them in sync. It is pinned
+# rather than `ubuntu-latest` because GitHub migrates that label to Ubuntu 26 on
+# 2026-10-19, which would silently change the toolchain under us.
 jobs:
   test:
     name: tests (py${{ matrix.python-version }})
-    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +59,7 @@ jobs:
     # of the macOS/fake tree. This caught a real bug: docker bind-mounts
     # /etc/hostname as a file, which /proc/mounts reports like a filesystem, and
     # the disk collector attributed the whole volume's usage to it.
-    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    runs-on: ubuntu-24.04
     container: python:3.12-slim
     steps:
       - uses: actions/checkout@v7
@@ -79,43 +80,47 @@ jobs:
       - name: Collectors produce data from the real kernel
         # A container has no AMD GPU and no hwmon sensors, but cpu/mem/disk must
         # return real values rather than raising.
+        # No heredocs inside YAML blocks: the block scalar's indentation is
+        # passed through and Python sees "unexpected indent". -c keeps the code
+        # on one shell line. Use `uv run python`, not bare `python`: the slim
+        # image only ships python3.
         run: |
           set -euo pipefail
           uv run python -m hwmon.collectors > /tmp/collect.json
-          python - <<'PY'
+          uv run python -c "
           import json
-          payload = json.load(open("/tmp/collect.json"))
-          assert set(payload) == {"cpu", "mem", "gpu", "disk"}, payload.keys()
-          assert payload["mem"]["total"] > 0, "memory collector read nothing"
-          assert payload["cpu"]["threads"] >= 1, "cpu collector counted no threads"
-          import os
+          payload = json.load(open('/tmp/collect.json'))
+          assert set(payload) == {'cpu', 'mem', 'gpu', 'disk'}, payload.keys()
+          assert payload['mem']['total'] > 0, 'memory collector read nothing'
+          assert payload['cpu']['threads'] >= 1, 'cpu collector counted no threads'
           # docker bind-mounts these as files; they must never appear as
           # filesystems in the disk collector
-          mounts = [fs["mount"] for d in payload["disk"] for fs in d["fs"]]
-          assert "/etc/hostname" not in mounts, mounts
-          assert "/etc/resolv.conf" not in mounts, mounts
-          print("collectors OK:", {k: (len(v) if isinstance(v, list) else "dict") for k, v in payload.items()})
-          PY
+          mounts = [fs['mount'] for d in payload['disk'] for fs in d['fs']]
+          assert '/etc/hostname' not in mounts, mounts
+          assert '/etc/resolv.conf' not in mounts, mounts
+          print('collectors OK:', {k: (len(v) if isinstance(v, list) else 'dict') for k, v in payload.items()})
+          "
       - name: SQLite history works on a real filesystem
         run: |
-          uv run python - <<'PY'
+          set -euo pipefail
+          uv run python -c "
           import json, tempfile, pathlib
           from hwmon.pro import HistoryStore
           from hwmon import contract
 
-          payload = json.load(open("/tmp/collect.json"))
-          payload["ts"] = 1.0
-          with HistoryStore(pathlib.Path(tempfile.mkdtemp()) / "h.db") as store:
+          payload = json.load(open('/tmp/collect.json'))
+          payload['ts'] = 1.0
+          with HistoryStore(pathlib.Path(tempfile.mkdtemp()) / 'h.db') as store:
               store.record(payload)
               row = store.latest().as_dict()
           problems = contract.check_history_row(row)
           assert not problems, problems
-          print("history row OK:", row)
-          PY
+          print('history row OK:', row)
+          "
 
   lock:
     name: lock file is current
-    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -126,7 +131,7 @@ jobs:
 
   build:
     name: docker build + smoke
-    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    runs-on: ubuntu-24.04
     needs: [test, linux, lock]
     steps:
       - uses: actions/checkout@v7
@@ -165,7 +170,7 @@ jobs:
 
   package:
     name: sdist + wheel
-    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    runs-on: ubuntu-24.04
     needs: [test, linux, lock]
     steps:
       - uses: actions/checkout@v7
@@ -178,16 +183,17 @@ jobs:
         run: uv build
       - name: The wheel must contain the dashboard
         run: |
-          python3 - <<'PY'
+          set -euo pipefail
+          python3 -c "
           import zipfile, pathlib, sys
-          wheels = list(pathlib.Path("dist").glob("*.whl"))
-          assert wheels, "no wheel produced"
+          wheels = list(pathlib.Path('dist').glob('*.whl'))
+          assert wheels, 'no wheel produced'
           names = zipfile.ZipFile(wheels[0]).namelist()
-          for want in ("hwmon/static/index.html", "hwmon/static/favicon.svg"):
+          for want in ('hwmon/static/index.html', 'hwmon/static/favicon.svg'):
               if want not in names:
-                  sys.exit(f"wheel is missing {want}")
-          print("wheel contains", len(names), "entries including the dashboard")
-          PY
+                  sys.exit(f'wheel is missing {want}')
+          print('wheel contains', len(names), 'entries including the dashboard')
+          "
       - uses: actions/upload-artifact@v6
         with:
           name: dist
