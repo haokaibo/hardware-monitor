@@ -28,7 +28,7 @@ Browser ──► web (:8080) ──► agent (:9101) ──► /proc, /sys
 | OS | **Linux** (agent reads `/proc`, `/sys` directly; Windows/macOS not supported) |
 | Init | **systemd** (the agent is designed to run as a systemd service) |
 | GPU | **AMD only** (`vendor == 0x1002` is required; NVIDIA / Intel / Apple GPUs are skipped). CPU iGPU temp via `coretemp`/`zenpower` hwmon is fine. |
-| Python | **3.8+**, standard library only — no `pip install` needed |
+| Python | **3.10+**, standard library only — no `pip install` needed. The floor is what supported distros ship: Debian 12 → 3.11, Ubuntu 22.04 → 3.10, Ubuntu 24.04 → 3.12. Your distro `python3` is enough; nothing to install. CI tests 3.10 / 3.11 / 3.12 / 3.13 |
 | Web host | Any machine that can reach the agent over the network (Docker optional) |
 
 > **Heads up:** if you use NVIDIA or run Windows, this project is not for

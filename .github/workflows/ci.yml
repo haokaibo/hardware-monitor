@@ -16,26 +16,41 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Pinned runner image instead of `ubuntu-latest`: GitHub announced that the
+# `ubuntu-latest` label migrates to Ubuntu 26 on 2026-10-19, which would silently
+# change the toolchain under us.
+env:
+  RUNNER_OS_IMAGE: ubuntu-24.04
+
 jobs:
   test:
-    name: unit tests
-    runs-on: ubuntu-latest
+    name: unit tests (py${{ matrix.python-version }})
+    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor matches the documented minimum (3.10) so the README claim is
+        # actually verified; the rest track the distro Pythons we expect in the
+        # field (Debian 12 -> 3.11, Ubuntu 24.04 -> 3.12, newer -> 3.13).
+        python-version: ['3.10', '3.11', '3.12', '3.13']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7   # node24 (v4 targets deprecated node20)
         with:
           fetch-depth: 0   # build number needs the full commit count
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7   # node24 (v5 targets deprecated node20)
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
+      - name: Show interpreter
+        run: python3 -VV
       - name: Run unittest suite (stdlib only)
         run: python3 -m unittest discover -s tests -v
 
   build:
     name: docker build + smoke
-    runs-on: ubuntu-latest
+    runs-on: ${{ env.RUNNER_OS_IMAGE }}
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Build image
@@ -45,8 +60,8 @@ jobs:
           docker build -t hwmon-web:ci .
       # No agent is reachable in CI, so the web container starts and serves the
       # page while /api/metrics returns 502 from the proxy. The smoke test is
-      # therefore run with --expect-index only (page integrity + /healthz),
-      # not the full metrics contract.
+      # therefore run in --page-only mode (page integrity + /healthz), not the
+      # full metrics contract.
       - name: Boot container and smoke the page
         run: |
           set -euo pipefail
