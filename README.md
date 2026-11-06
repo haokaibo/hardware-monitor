@@ -211,7 +211,6 @@ tests/            test suite (no third-party deps)
   smoke.py          post-deploy smoke test
   fixtures/         sample metric payloads for tests
 docs/             deployment guides (Gitea Actions)
-docs/legacy/      pre-refactor single-script monitor & sample data
 .github/workflows/  GitHub CI (tests + docker build; never deploys)
 .gitea/workflows/   Gitea deploy workflow (intranet only)
 SECURITY.md       security model: intranet-only, no TLS, no login
@@ -259,8 +258,8 @@ git remote set-url --add --push gitea "$(git remote get-url gitea)"
 ### Publishing safeguards
 
 - `.env` is gitignored and must never be committed; it holds `AGENT_TOKEN`.
-- Sample payloads under `tests/fixtures/` and `docs/legacy/` use placeholders
-  (`host-a`, `CPU`, generic disk models), not real host identities.
+- Sample payloads under `tests/fixtures/` use placeholders (`host-a`, `CPU`,
+  generic disk models), not real host identities.
 - `.git` carries the Gitea URL in `origin`/`gitea` config. When shipping the
   repository as an archive, export a clean copy instead:
 

@@ -190,7 +190,6 @@ tests/            测试套件（无第三方依赖）
   smoke.py          部署后冒烟测试
   fixtures/         测试用样例数据
 docs/             部署文档（Gitea Actions 自动部署）
-docs/legacy/      重构前的单脚本监控与样例数据
 .github/workflows/  GitHub CI（测试 + docker build，不做部署）
 .gitea/workflows/   Gitea 部署工作流（仅内网）
 SECURITY.md        安全模型：仅内网、无 TLS、无登录
@@ -236,8 +235,8 @@ git remote set-url --add --push gitea "git@github.com:<you>/hardware-monitor.git
 ### 发布前检查
 
 - `.env` 已被 gitignore，绝不可提交（里面有 `AGENT_TOKEN`）。
-- `tests/fixtures/` 与 `docs/legacy/` 的样例数据使用占位符（`host-a`、`CPU`、
-  通用磁盘型号），不含真实主机标识。
+- `tests/fixtures/` 的样例数据使用占位符（`host-a`、`CPU`、通用磁盘型号），
+  不含真实主机标识。
 - `.git/config` 里仍带着 Gitea 内网地址。若要打包分发仓库，请导出干净副本：
 
   ```bash

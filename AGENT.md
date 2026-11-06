@@ -75,7 +75,7 @@ src/hwmon/
   static/            index.html, favicon.svg (packaged, served by web mode)
 licensing/           issue.py (sign), verify.py (compiled into pro)
 packaging/           docker/Dockerfile.rocky{8,9}, hwmonpro.spec
-docs/                deployment-ci.md, troubleshooting.md, legacy/
+docs/                deployment-ci.md, troubleshooting.md
 tests/               pytest suite; conftest.py builds the fake host tree
 ```
 

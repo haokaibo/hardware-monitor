@@ -2,7 +2,14 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# Packaging / build output
+build/
+dist/
 *.egg-info/
+*.rpm
+
+# Virtual environments
 .venv/
 venv/
 
@@ -10,24 +17,19 @@ venv/
 .vscode/
 .idea/
 
-# 本地部署配置（含 AGENT_TOKEN，切勿提交）
+# Local deployment config (contains AGENT_TOKEN; never commit)
 .env
 
 # macOS
 .DS_Store
 
-# Agent / AI 工具本地配置
+# Agent / AI tooling local config
 .pi/
 
-# uv / packaging
+# uv
 .uv/
-dist/
-build/
-*.egg-info/
-*.rpm
-*.spec.bak
 
-# signing keys and licences must never be committed
+# Signing keys and licences must never be committed
 *.pem
 *.key
 license.json
