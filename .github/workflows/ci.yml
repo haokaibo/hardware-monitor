@@ -66,12 +66,15 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install uv
+        # Do not assume $HOME is /root: GitHub's container: override sets
+        # HOME=/github/home, so the installer puts uv in /github/home/.local/bin
+        # and `mv /root/.local/bin/uv` fails. Find it by command, not by path.
         run: |
           apt-get update
           apt-get install -y --no-install-recommends curl ca-certificates git
           rm -rf /var/lib/apt/lists/*
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          mv /root/.local/bin/uv /usr/local/bin/uv
+          install -m 0755 "$(command -v uv || echo "$HOME/.local/bin/uv")" /usr/local/bin/uv
           uv --version
       - name: Sync locked dependencies
         run: uv sync --frozen --all-extras

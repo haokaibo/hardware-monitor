@@ -17,7 +17,7 @@ ENV PYTHON_VERSION=3.12 \
 
 RUN dnf -y install curl ca-certificates tar gzip \
  && curl -LsSf https://astral.sh/uv/install.sh | sh \
- && mv /root/.local/bin/uv /usr/local/bin/uv \
+ && install -m 0755 "$(command -v uv || echo "$HOME/.local/bin/uv")" /usr/local/bin/uv \
  && dnf clean all && rm -rf /var/cache/dnf
 
 WORKDIR /src
@@ -26,7 +26,7 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY src ./src
 COPY VERSION README.md LICENSE ./
 RUN uv sync --frozen --no-dev \
- && useradd --system --no-create-home --uid 997 hwmon
+ && chmod -R a+rX /src/src && useradd --system --no-create-home --uid 997 hwmon
 
 USER hwmon
 ENV PORT=8080 HWMON_MODE=web

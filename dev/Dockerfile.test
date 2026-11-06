@@ -16,7 +16,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && curl -LsSf https://astral.sh/uv/install.sh | sh \
- && mv /root/.local/bin/uv /usr/local/bin/uv
+ && install -m 0755 "$(command -v uv || echo "$HOME/.local/bin/uv")" /usr/local/bin/uv
 
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
@@ -31,8 +31,13 @@ COPY tests ./tests
 COPY licensing ./licensing
 COPY packaging ./packaging
 COPY docs ./docs
+# The packaging tests read these from the repo root; a test image that omits
+# them turns a missing COPY into a test failure that looks like a code bug.
+COPY docker-compose.yml Dockerfile ./ 
 COPY VERSION README.md README.zh-CN.md LICENSE AGENT.md SECURITY.md ./
 RUN uv sync --frozen --all-extras
+# make sources world-readable for any non-root user
+RUN chmod -R a+rX /src
 
 # The fake-host tests do not need privileges; only real-sensor runs do.
 CMD ["uv", "run", "pytest", "-q"]

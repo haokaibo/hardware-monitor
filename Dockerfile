@@ -17,7 +17,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && curl -LsSf https://astral.sh/uv/install.sh | sh \
- && mv /root/.local/bin/uv /usr/local/bin/uv
+ # not `mv /root/...`: HOME may not be /root (GitHub's container: override
+ # uses /github/home), so resolve the binary instead of assuming a path
+ && install -m 0755 "$(command -v uv || echo "$HOME/.local/bin/uv")" /usr/local/bin/uv
 
 WORKDIR /src
 
@@ -29,7 +31,13 @@ COPY src ./src
 COPY VERSION README.md LICENSE ./
 
 # Third and final sync installs the project itself on top of the cached deps.
+#
+# The chmod is not cosmetic: files created with a restrictive umask (0600) reach
+# the image as owner-only, and the container runs as an unprivileged user, so
+# index.html would be unreadable and "/" would 404 while /healthz stayed green.
+# That failure only shows up at request time, never at build time.
 RUN uv sync --frozen --no-dev \
+ && chmod -R a+rX /src/src \
  && useradd --system --no-create-home --uid 997 hwmon
 
 USER hwmon
