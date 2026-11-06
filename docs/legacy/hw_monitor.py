@@ -63,7 +63,7 @@ def read_energy_uj(path):
 def get_cpu_power_watts(sample_seconds=0.2):
     """
     通过 RAPL (Running Average Power Limit) sysfs 接口采样计算 CPU 瞬时功耗。
-    9600X 属于 Zen5 平台，内核较新时会通过 powercap 框架暴露 amd-rapl 节点，
+    较新的内核（如 Zen5 平台）会通过 powercap 框架暴露 amd-rapl 节点，
     路径结构和 Intel RAPL 一致：/sys/class/powercap/*/energy_uj（微焦耳，单调递增计数器）。
     做法：采样两次能量计数值，除以时间差得到瞬时功率，比读取瞬时寄存器更稳定可靠。
     """
