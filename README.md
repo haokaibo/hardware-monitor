@@ -57,7 +57,7 @@ sudo mkdir -p /opt/hwmon && sudo cp app.py /opt/hwmon/
 echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe drivetemp   # SATA disk temps
 sudo cat > /etc/hwmon-agent.env <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
-AGENT_LABEL=AI PC
+AGENT_LABEL=my-host
 HWMON_VERSION=$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)   # optional: build version shown on the page (major.minor.build of the commit app.py was copied from)
 EOF
 sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
@@ -109,7 +109,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 |---|---|---|
 | `AGENT_TOKEN` | both | shared token; empty on the agent disables the check |
 | `AGENT_URL` | web | agent address, e.g. `http://<agent-ip>:9101` |
-| `AGENT_LABEL` | agent | hostname shown in the dashboard header |
+| `AGENT_LABEL` | agent | optional label shown in the dashboard header (defaults to the hostname) |
 | `GPU_NAME` | agent | override GPU display name (sysfs rarely has a model string) |
 | `INCLUDE_IGPU` | agent | set `1` to also show the CPU iGPU (hidden when VRAM < 2 GB) |
 | `PORT` | both | default: agent 9101 / web 8080 |
@@ -203,7 +203,7 @@ sudo mkdir -p /opt/hwmon && sudo cp app.py /opt/hwmon/
 echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe drivetemp   # SATA 盘温度
 sudo cat > /etc/hwmon-agent.env <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
-AGENT_LABEL=AI PC
+AGENT_LABEL=my-host
 HWMON_VERSION=$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)   # 可选：页面展示的版本号（app.py 来源 commit 的 major.minor.build）
 EOF
 sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
@@ -250,7 +250,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 |---|---|---|
 | `AGENT_TOKEN` | 两端 | 共享令牌；agent 端为空则不校验 |
 | `AGENT_URL` | web | agent 地址，如 `http://<agent-ip>:9101` |
-| `AGENT_LABEL` | agent | 页面顶部显示的主机名 |
+| `AGENT_LABEL` | agent | 可选，页面顶部显示的标签（默认取主机名） |
 | `GPU_NAME` | agent | 覆盖显卡显示名（sysfs 通常没有型号） |
 | `INCLUDE_IGPU` | agent | 设为 1 则显示核显（默认隐藏 VRAM < 2GB 的） |
 | `PORT` | 两端 | 默认 agent 9101 / web 8080 |

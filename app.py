@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""hwmon — 用法: python3 app.py agent   (AI PC 宿主机, 采集)
-                 python3 app.py web     (极摩客 G3 容器, 网页 + 转发)
-只依赖标准库。"""
+"""hwmon — usage: python3 app.py agent   (monitored host, samples hardware)
+                    python3 app.py web     (web client container, dashboard + proxy)
+Standard library only."""
 import glob, hmac, json, os, re, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import Request, urlopen
@@ -216,7 +216,7 @@ class H(BaseHTTPRequestHandler):
                                      headers={"X-Token": TOKEN}), timeout=3) as r:
                     return self.send(200, r.read())
             except Exception as e:
-                return self.send(502, json.dumps({"error": f"无法连接 AI PC agent: {e}"}).encode())
+                return self.send(502, json.dumps({"error": f"无法连接 agent: {e}"}).encode())
         if path in ("/", "/favicon.svg") and MODE == "web":
             name = os.path.basename(INDEX) if path == "/" else path.lstrip("/")
             ctype = "text/html; charset=utf-8" if path == "/" else "image/svg+xml"

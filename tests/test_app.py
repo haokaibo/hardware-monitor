@@ -43,7 +43,7 @@ STAT2 = "cpu  150 0 150 780 120 0 0 0 0 0\ncpu0 75 0 75 390 60 0 0 0 0 0\ncpu1 7
 
 
 def build_host(root, mnt):
-    """在 root 下造一台假的 AI PC: CPU / 内存 / 1 块 AMD 独显 + 1 块核显 + 3 块磁盘。"""
+    """Build a fake host tree under root: CPU / memory / 1 AMD dGPU + 1 iGPU + 3 disks."""
     w(root, "/proc/stat", STAT1)
     w(root, "/proc/cpuinfo", "processor\t: 0\nmodel name\t: Fake CPU 9000\n")
     w(root, "/proc/meminfo", "MemTotal:       16384000 kB\nMemAvailable:    8192000 kB\n"
@@ -442,7 +442,7 @@ class WebHttpTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"AGENT_URL": f"http://127.0.0.1:{free_port()}"}):
             st, _, body = get(self.srv.port, "/api/metrics")
         self.assertEqual(st, 502)
-        self.assertTrue(json.loads(body)["error"].startswith("无法连接 AI PC agent"))   # 前端按这个前缀做英文替换
+        self.assertTrue(json.loads(body)["error"].startswith("无法连接 agent"))   # 前端按这个前缀做英文替换
 
     def test_missing_agent_url_becomes_502(self):
         env = {k: v for k, v in os.environ.items() if k != "AGENT_URL"}
