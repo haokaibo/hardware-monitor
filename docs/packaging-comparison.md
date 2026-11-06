@@ -132,14 +132,26 @@ Both checks exist because neither failure is visible at install time otherwise:
 a package with the wrong-version `.so` installs cleanly and breaks only when
 someone enables the pro features.
 
-## Note on `licensing/verify.py`
+## Why `licensing/verify.py` is not compiled
 
-It is deliberately **not** in `PRO_MODULES`. It is imported by the pro tier and
-by `licensing/issue.py`, and keeping it as source means the licence check can be
-audited by the customer — which is the point of a verifier. Compiling it is
-possible (`build_ext.py --modules licensing/verify.py`) for a tier where the
-check itself must be obscured, but that is a product decision, not a packaging
-default, and it is not done here.
+It is deliberately absent from `PRO_MODULES`, and the reasoning is a security
+argument rather than a packaging convenience, so it lives in
+[SECURITY.md](../SECURITY.md#why-the-licence-verifier-is-not-compiled). In short:
+
+* **Kerckhoffs's principle.** The verifier embeds only the *public* key. The
+  secret is the private key, which never reaches a customer, so publishing the
+  check removes no security.
+* **Auditability is a feature for the buyers involved.** An unauditable licence
+  check is a supply-chain objection for semiconductor/EDA teams, not an
+  assurance.
+* **Compilation protects business logic, not security mechanisms.** `pro/` is
+  compiled because its algorithms are the product. That is a different goal
+  from "make verification harder to read", and the two should not be conflated.
+
+`build_ext.py --modules licensing/verify.py` will compile it if a future tier
+has a threat model that justifies hiding it. The default list is where the
+decision is expressed — see also `tests/test_cython_build.py`, which asserts
+`verify.py` is not in it.
 
 ## Reproducing the experiment
 

@@ -189,3 +189,55 @@ def test_cython_build_produces_loadable_extensions(tmp_path):
     run = subprocess.run([sys.executable, "-c", check], capture_output=True, text=True, env=env)
     assert run.returncode == 0, run.stdout + run.stderr
     assert "compiled pro OK" in run.stdout
+
+
+# ---------------------------------------------------------------- the verifier
+
+
+def test_licence_verifier_is_not_compiled(build_script):
+    """A deliberate decision, not an oversight.
+
+    Rationale is in SECURITY.md: Kerckhoffs's principle (the public key is not a
+    secret), customer auditability, and the distinction between protecting
+    business logic (pro/) and protecting a security mechanism (the verifier).
+    A test keeps the decision from being reversed by accident when someone
+    "tidies" PRO_MODULES.
+    """
+    pro_modules_block = build_script.split("PRO_MODULES", 1)[1].split(")", 1)[0]
+    assert "licensing" not in pro_modules_block
+    assert "verify" not in pro_modules_block
+
+
+def test_runtime_does_not_depend_on_the_licensing_tool():
+    """If the runtime imported it, "not compiling it" would still ship it as a
+    native artifact exercised on every start."""
+    src = REPO / "src"
+    offenders = []
+    for path in src.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("import ", "from ")) and "licensing" in stripped:
+                offenders.append(f"{path.relative_to(REPO)}: {stripped}")
+    assert offenders == [], offenders
+
+
+def test_security_md_states_the_reason():
+    """The decision must be argued, not just asserted somewhere."""
+    doc = (REPO / "SECURITY.md").read_text()
+    assert "Why the licence verifier is not compiled" in doc
+    assert "Kerckhoffs" in doc
+    # the three legs of the argument
+    assert "private key" in doc
+    assert "audit" in doc.lower()
+    assert "business logic" in doc
+
+
+def test_comparison_doc_points_at_the_argument():
+    doc = (REPO / "docs" / "packaging-comparison.md").read_text()
+    assert "SECURITY.md#why-the-licence-verifier-is-not-compiled" in doc
+
+
+def test_verifier_can_still_be_compiled_on_request(build_script):
+    """The capability is documented; only the default excludes it."""
+    assert "--modules" in build_script

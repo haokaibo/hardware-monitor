@@ -73,7 +73,7 @@ src/hwmon/
     history.py       SQLite downsample store      <- compiled in packaged builds
     alerts.py        threshold engine             <- compiled in packaged builds
   static/            index.html, favicon.svg (packaged, served by web mode)
-licensing/           issue.py (sign), verify.py (compiled into pro)
+licensing/           issue.py (sign), verify.py (source, never compiled - see SECURITY.md)
 packaging/
   build_ext.py       Cython build for the pro tier
   build_exe.py       PyInstaller build for the collector CLI

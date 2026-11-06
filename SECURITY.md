@@ -46,6 +46,42 @@ run the pro tier; it does not grant access to the dashboard.
 `cryptography` is imported only by `hwmon/release.py` and `licensing/`. The
 collectors and the HTTP server do not depend on it.
 
+### Why the licence verifier is not compiled
+
+The pro tier ships as compiled extensions; `licensing/verify.py` deliberately
+does not. This is a design decision, not a packaging oversight, and it follows
+from Kerckhoffs's principle: a verification system's security must rest on the
+secrecy of the **key**, never on the secrecy of the algorithm.
+
+Concretely, for this project:
+
+* **The secret is the private key, and it never reaches a customer.** The
+  verifier only embeds the *public* key. Publishing the verification logic
+  therefore removes no security — an attacker who can read it still cannot
+  forge a signature without the private key.
+* **Obfuscation here would only hide behaviour, not protect a secret.** That is
+  the worst trade in this space: a customer cannot audit what the check
+  actually inspects, whether it reports anything back, or whether it behaves as
+  documented. For buyers with supply-chain review obligations — semiconductor
+  and EDA teams in particular — an unauditable licence check is a reason to
+  reject the product, not a reason to trust it.
+* **What compilation is for is different.** `pro/history.py` and
+  `pro/alerts.py` are compiled to protect commercial value: the algorithms are
+  the product. Protecting business logic and protecting a security mechanism
+  are separate goals achieved by separate means, and conflating them produces a
+  system that is neither auditable nor meaningfully harder to reverse.
+
+The verifier is also not imported by the runtime: nothing under `src/hwmon/`
+references `licensing/`. It is an independent library used by
+`licensing/issue.py` and the test suite, so compiling it would not even be
+"free" — it would ship a native artefact that no runtime path exercises.
+
+If a future tier genuinely needs the check itself obscured, that is a different
+product with a different threat model, and it should be argued explicitly rather
+than switched on by default. `packaging/build_ext.py` can compile it
+(`--modules licensing/verify.py`); the default list is what expresses the
+decision.
+
 ### What the agent can read
 
 The agent runs as root and reads `/proc`, `/sys` and `hwmon` nodes. It exposes
