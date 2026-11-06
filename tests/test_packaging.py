@@ -235,7 +235,16 @@ def test_static_assets_are_world_readable():
 
 
 def test_dockerfiles_make_the_package_readable():
-    """Each image that ships the package must not rely on repo file modes."""
-    for path in [REPO / "Dockerfile", *(REPO / "packaging" / "docker").glob("Dockerfile.*")]:
+    """Each image that *runs* the package must not rely on repo file modes.
+
+    Images named Dockerfile.extbuild.* only compile extensions and never run the
+    service, so the rule does not apply to them.
+    """
+    runtime_images = [
+        REPO / "Dockerfile",
+        *(p for p in (REPO / "packaging" / "docker").glob("Dockerfile.*") if ".extbuild." not in p.name),
+    ]
+    assert len(runtime_images) >= 3, [p.name for p in runtime_images]
+    for path in runtime_images:
         text = path.read_text()
         assert "chmod -R a+rX" in text, f"{path.name} does not normalise permissions"

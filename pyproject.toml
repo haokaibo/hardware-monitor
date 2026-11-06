@@ -38,6 +38,10 @@ hwmon = "hwmon.cli:main"
 build = [
     "pyinstaller>=6.10",
 ]
+cython = [
+    "cython>=3.3.1",
+    "setuptools>=84.2.1",
+]
 
 [dependency-groups]
 dev = [

@@ -1,0 +1,55 @@
+# Rocky 9 build image for the Cython extensions.
+#
+# Used for the glibc compatibility experiment described in
+# docs/packaging-comparison.md: this image (glibc 2.34) builds extensions that
+# CANNOT load on Rocky 8 (glibc 2.28). Running both directions is the point of
+# the experiment; the result is recorded there.
+#
+# Rocky 9 ships Python 3.9, which cannot compile the pro modules (they need 3.10+
+# for dataclass annotations), so uv installs the pinned interpreter as it does
+# everywhere else.
+#
+#   docker build -f packaging/docker/Dockerfile.extbuild.rocky9 -t hwmon-ext:rocky9 .
+#   docker run --rm -v "$PWD/out:/out" hwmon-ext:rocky9
+FROM rockylinux:9
+
+# gcc/make are required to compile the generated C; python3-devel headers come
+# from uv's own interpreter, so the distro's python-devel is deliberately not
+# installed — mixing the two is exactly how ABI mismatches start.
+# --allowerasing: Rocky 9's base image ships curl-minimal, which conflicts with
+# the full curl package. Without the flag dnf refuses to proceed. The installer
+# works with either, so dropping the minimal variant is safe here.
+RUN dnf -y --allowerasing install gcc gcc-c++ make curl ca-certificates tar gzip findutils \
+ && dnf clean all && rm -rf /var/cache/dnf
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+ && install -m 0755 "$(command -v uv || echo "$HOME/.local/bin/uv")" /usr/local/bin/uv
+
+ENV PYTHON_VERSION=3.12 \
+    UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/hwmon/build-venv \
+    PATH=/opt/hwmon/build-venv/bin:$PATH
+
+WORKDIR /src
+COPY pyproject.toml uv.lock .python-version ./
+COPY src ./src
+COPY packaging ./packaging
+COPY VERSION README.md LICENSE ./
+
+# --extra cython brings Cython/setuptools into the build environment; they are
+# not runtime dependencies and never reach the runtime image.
+RUN uv sync --frozen --extra cython --no-dev
+
+# Record the toolchain so the comparison doc can state exactly what produced
+# each artifact instead of relying on the base image tag alone.
+RUN { echo "base_image: rockylinux:9"; \
+      echo "interpreter: $(python -VV)"; \
+      echo "glibc: $(ldd --version | head -1)"; \
+      echo "gcc: $(gcc --version | head -1)"; \
+    } | tee /src/toolchain.txt
+
+# Output goes to /out so the host (or another container) can pick it up:
+#   docker run --rm -v "$PWD/out:/out" hwmon-ext:rocky9
+CMD ["sh", "-c", "python packaging/build_ext.py --out /out && cp toolchain.txt /out/"]

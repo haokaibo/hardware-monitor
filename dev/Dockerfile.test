@@ -12,8 +12,10 @@
 #     uv run python -m hwmon.collectors               # real host sensors
 FROM python:3.12-slim
 
+# gcc is needed by the Cython build test; without it that test silently skips
+# and the Linux leg stops covering the compiled pro tier.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates \
+ && apt-get install -y --no-install-recommends curl ca-certificates gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/* \
  && curl -LsSf https://astral.sh/uv/install.sh | sh \
  && install -m 0755 "$(command -v uv || echo "$HOME/.local/bin/uv")" /usr/local/bin/uv

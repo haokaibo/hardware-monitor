@@ -26,6 +26,12 @@ BuildArch:      noarch
 Requires:       systemd
 Requires:       kmod
 
+# The pro extensions are compiled against one CPython minor version. Keep this
+# in lockstep with .python-version; the %build step aborts if they disagree.
+# (3.12 matches the interpreter the Docker images and CI use.)
+%{!?pyver: %global pyver 3.12}
+BuildRequires:  python%{pyver}
+
 %description
 hwmon samples CPU, memory, AMD GPU and disk metrics from /proc and /sys once
 per second and serves them as JSON on port 9101 for the web dashboard.
@@ -37,15 +43,60 @@ It exposes aggregate metrics only, never file contents.
 %setup -q
 
 %build
-# The interpreter and virtualenv are provisioned at install time by %post, not
-# here: the build host may be a different architecture than the target.
-%{__python3} -m compileall -q src/hwmon || true
+# Compile the pro tier to native extensions here, in %%build, so the artifact is
+# produced once and %install only copies it. Doing the Cython work at install
+# time would need a compiler on the target host, which a "no build tools on
+# production" policy forbids.
+
+# The ABI tag of the output is that of the interpreter used HERE. RPM must
+# therefore be built with the same minor version the target runs: see the
+# %{pyver} check below. A mismatch does not produce a link error, it produces a
+# file the target interpreter cannot even see (ModuleNotFoundError).
+#
+# The buildroot interpreter is provisioned by uv, the same way the runtime venv
+# is, so the extension is compiled against the exact CPython the package
+# installs. Without uv on the build host this step fails loudly rather than
+# silently emitting untagged source-only output.
+BUILD_PY=%{_builddir}/%{name}-%{version}/.buildvenv/bin/python
+uv venv --python %{pyver} --seed .buildvenv
+uv pip install --python "$BUILD_PY" cython setuptools
+"$BUILD_PY" packaging/build_ext.py --out cython-out
+
+# Record what was built so %install can assert it matches the package's
+# declared interpreter instead of trusting the build host's default python3.
+"$BUILD_PY" -c 'import sys; print(sys.version_info[0], sys.version_info[1])' > cython-out/interpreter.txt
+echo "compiled extensions for: $(cat cython-out/interpreter.txt)"
+find cython-out -name '*.so' -printf '  %f\n'
 
 %install
 install -d %{buildroot}%{_datadir}/%{name} %{buildroot}%{_sysconfdir}/%{name}
 install -d %{buildroot}%{_unitdir} %{buildroot}%{_sbindir}
-cp -a src pyproject.toml uv.lock .python-version %{buildroot}%{_datadir}/%{name}/
+
+# The open tiers ship as source; only the pro tier ships compiled. That is the
+# product boundary, and it is enforced by what %install copies, not by a promise
+# in the docs.
+cp -a src %{buildroot}%{_datadir}/%{name}/
+rm -rf %{buildroot}%{_datadir}/%{name}/src/hwmon/pro
+install -d %{buildroot}%{_datadir}/%{name}/src/hwmon/pro
+install -m 0644 cython-out/hwmon/pro/*.so %{buildroot}%{_datadir}/%{name}/src/hwmon/pro/
+
+# The compiled pro modules import `from .. import contract`, so the shim and the
+# contract module must sit beside them; a .so alone is not importable.
+install -m 0644 src/hwmon/pro/__init__.py %{buildroot}%{_datadir}/%{name}/src/hwmon/pro/
+install -m 0644 src/hwmon/contract.py %{buildroot}%{_datadir}/%{name}/src/hwmon/
+
+# A pro package without its extensions is the failure this guards against: it
+# installs cleanly and breaks only when someone enables the pro features.
+test -n "$(ls %{buildroot}%{_datadir}/%{name}/src/hwmon/pro/*.so 2>/dev/null)" || {
+  echo "ERROR: no compiled pro extensions were installed" >&2; exit 1; }
+build_ver="$(cat cython-out/interpreter.txt)"
+[ "$build_ver" = "%{pyver}" ] || {
+  echo "ERROR: extensions built for python $build_ver but the package declares %{pyver}" >&2
+  exit 1; }
+
+cp -a pyproject.toml uv.lock .python-version %{buildroot}%{_datadir}/%{name}/
 echo %{version} > %{buildroot}%{_datadir}/%{name}/VERSION
+
 
 cat > %{buildroot}%{_unitdir}/hwmon-agent.service <<'UNIT'
 [Unit]

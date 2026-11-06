@@ -70,11 +70,16 @@ src/hwmon/
   contract.py        three contracts: /api/metrics, HISTORY, ALERT
   release.py         Ed25519 signing/verification of release artefacts
   pro/
-    history.py       SQLite downsample store
-    alerts.py        threshold engine with debounce and hysteresis
+    history.py       SQLite downsample store      <- compiled in packaged builds
+    alerts.py        threshold engine             <- compiled in packaged builds
   static/            index.html, favicon.svg (packaged, served by web mode)
 licensing/           issue.py (sign), verify.py (compiled into pro)
-packaging/           docker/Dockerfile.rocky{8,9}, hwmonpro.spec
+packaging/
+  build_ext.py       Cython build for the pro tier
+  build_exe.py       PyInstaller build for the collector CLI
+  nuitka_flags.txt   the equivalent Nuitka flags
+  hwmonpro.spec      RPM: %build compiles, %install only copies
+  docker/            runtime images .rocky{8,9}, build images .extbuild.rocky{8,9}
 docs/                deployment-ci.md, troubleshooting.md
 tests/               pytest suite; conftest.py builds the fake host tree
 ```
@@ -126,7 +131,8 @@ so the two cannot drift.
 
 ```bash
 uv sync                      # install locked deps + the project
-uv run pytest -q             # full suite (199 tests)
+uv run pytest -q             # full suite (214 tests)
+uv run --extra cython pytest # the same, including the real Cython compile
 uv run hwmon agent           # run the agent from source
 uv run hwmon web             # run the dashboard from source
 uv build                     # sdist + wheel into dist/
@@ -162,6 +168,32 @@ uv add --dev <package>    # test/dev only
 
 Then commit `pyproject.toml` **and** `uv.lock`. Prefer the standard library; the
 agent's installability on a bare host is a feature.
+
+### The compiled pro tier
+
+`pro/history.py` and `pro/alerts.py` compile to native extensions in packaged
+builds; the open tiers (`collectors/`, `server.py`, `cli.py`) never do. That is
+the product boundary and it is enforced by what the RPM installs, not by a
+promise:
+
+```bash
+uv run --extra cython python packaging/build_ext.py   # -> build/cython/hwmon/pro/*.so
+```
+
+Three facts that shape everything here, all measured (see
+[docs/packaging-comparison.md](docs/packaging-comparison.md)):
+
+* The `.so` carries an interpreter-specific ABI tag (`cpython-312`). A different
+  minor version does not see it at all and reports **`ModuleNotFoundError`**,
+  not an ABI error. Never assume "wrong version" will say so.
+* The filename does **not** encode the glibc requirement. Two builds on
+  different distributions have identical names; check with
+  `objdump -T x.so | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -1`.
+* A compiled module is **not** standalone: `pro/` uses `from .. import
+  contract`, so the package shim and `contract.py` must ship beside the `.so`.
+
+Do not enable `abi3`/`--limited-api` as a shortcut: `pro/` uses `sqlite3` and
+dataclasses, which the limited API does not expose.
 
 ### Release signing
 
