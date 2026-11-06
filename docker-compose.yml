@@ -7,11 +7,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # 实际取值来自同目录的 .env（本地手填或由 Gitea Actions 写入）
-      AGENT_URL: "${AGENT_URL:?请在 .env 中设置 AGENT_URL}"
-      AGENT_TOKEN: "${AGENT_TOKEN:?请在 .env 中设置 AGENT_TOKEN}"
-      HWMON_VERSION: "${HWMON_VERSION:-dev}"   # 页面展示的版本号 (major.minor.build)；CI 每次 push 自动写入
-    # 限制容器日志，避免长期运行把磁盘写满
+      # Values come from the .env in this directory (filled in by hand or written by CI)
+      AGENT_URL: "${AGENT_URL:?set AGENT_URL in .env}"
+      AGENT_TOKEN: "${AGENT_TOKEN:?set AGENT_TOKEN in .env}"
+      HWMON_VERSION: "${HWMON_VERSION:-dev}"   # version shown on the page (major.minor.build); written by CI on every push
+    # cap container logs so a long-running deployment cannot fill the disk
     logging:
       driver: json-file
       options:

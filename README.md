@@ -1,6 +1,6 @@
 # hwmon — Lightweight Hardware Monitor
 
-> 轻量级硬件监控 · MIT License · Zero dependencies
+> Self-hosted · MIT License · Zero dependencies · Linux + AMD
 
 A tiny self-hosted hardware monitor: one Python agent on your server, one
 single-page dashboard in the browser. No database, no third-party packages,
@@ -17,13 +17,11 @@ no install — just `python3 app.py`.
 Browser ──► web (:8080) ──► agent (:9101) ──► /proc, /sys
 ```
 
-[English](#english) · [中文](#中文)
+[English](README.md) · [中文](README.zh-CN.md)
 
 ---
 
-## English
-
-### Platform requirements
+## Platform requirements
 
 | Component | Requirement |
 |---|---|
@@ -37,7 +35,7 @@ Browser ──► web (:8080) ──► agent (:9101) ──► /proc, /sys
 > you — please don't open issues asking for that. The agent is deliberately
 > minimal and Linux+AMD specific.
 
-### Metrics
+## Metrics
 
 - **CPU**: usage, per-core temp (`k10temp`/`coretemp`/`zenpower`), frequency,
   model, load average.
@@ -48,7 +46,7 @@ Browser ──► web (:8080) ──► agent (:9101) ──► /proc, /sys
   physical drive), NVMe temp via hwmon, SATA temp via `drivetemp`.
 - Disk info refreshes every 10 s (to avoid waking HDDs); everything else at 1 Hz.
 
-### Quick start
+## Quick start
 
 **1. Agent — on the monitored Linux host**
 
@@ -90,7 +88,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 # or: docker compose up -d --build  (see docker-compose.yml)
 ```
 
-### Security
+## Security
 
 - **Intranet only.** There is **no TLS** and **no login** — the agent and the
   web dashboard are plain HTTP. Never expose port 8080 or 9101 to the public
@@ -103,7 +101,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 - If you need remote access, put the **web** container behind a VPN or a TLS
   reverse proxy (nginx/caddy) — not the agent.
 
-### Configuration
+## Configuration
 
 | Variable | Where | Meaning |
 |---|---|---|
@@ -115,7 +113,7 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 | `PORT` | both | default: agent 9101 / web 8080 |
 | `HWMON_VERSION` | both | build version shown on the page, format `major.minor.build` (e.g. `1.0.123`). CI sets it automatically: `major.minor` from the `VERSION` file (bump it manually for releases) + build number = total commits (increments on every push). For manual deploys set `$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)`; empty shows `dev`. If the agent's version differs from the web build, the page highlights it in amber (agent out of date) |
 
-### Development & testing
+## Development & testing
 
 Standard library only — no test dependencies to install.
 
@@ -134,7 +132,7 @@ python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
   reads into a fake directory tree — this is how the unit tests run without
   touching real hardware.
 
-### Known limitations
+## Known limitations
 
 - Filesystems inside LXC/VM guests are not visible from the host (their
   rootfs usually lives on LVM-thin and is not mounted on the host).
@@ -143,7 +141,7 @@ python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
 - The dashboard has no history storage; trend charts are built from the last
   hour of in-memory samples on the browser side.
 
-### Project layout
+## Project layout
 
 ```
 app.py            agent + web server (one file, stdlib only)
@@ -154,150 +152,74 @@ tests/            test suite (no third-party deps)
   test_app.py       unit tests (unittest)
   smoke.py          post-deploy smoke test
   fixtures/         sample metric payloads for tests
-docs/             deployment guides (e.g. Gitea Actions)
+docs/             deployment guides (Gitea Actions)
 docs/legacy/      pre-refactor single-script monitor & sample data
+.github/workflows/  GitHub CI (tests + docker build; never deploys)
+.gitea/workflows/   Gitea deploy workflow (intranet only)
+SECURITY.md       security model: intranet-only, no TLS, no login
+README.zh-CN.md   中文说明
 Dockerfile / docker-compose.yml   web container
 ```
 
-### Optional: Gitea Actions auto-deploy
+## Two remotes: Gitea + GitHub
+
+The same tree can be pushed to both a private Gitea instance and a public
+GitHub repository, and each side runs its own CI. They do not interfere:
+
+| Remote | Workflow | What it does |
+|---|---|---|
+| `gitea` (private, intranet) | [`.gitea/workflows/deploy.yaml`](.gitea/workflows/deploy.yaml) | Self-hosted runner on the Docker host: build, deploy, health-check |
+| `origin` (GitHub) | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | GitHub-hosted runner: unit tests, `docker build`, boot + page smoke test |
+
+The key property is that **each platform only reads its own directory**:
+Gitea looks at `.gitea/workflows/`, GitHub at `.github/workflows/`. A push to
+GitHub can therefore never trigger a deploy to the intranet, and a Gitea push
+never triggers the GitHub build. Keep both directories in the repo.
+
+### One-time setup
+
+```bash
+# current remote (Gitea) is renamed, not removed: deployment keeps working
+git remote rename origin gitea
+git remote add origin git@github.com:<you>/hardware-monitor.git
+
+# optional: push to both in one command
+git remote set-url --add --push gitea "$(git remote get-url gitea)"
+```
+
+After this, `git push origin main` publishes to GitHub and
+`git push gitea main` triggers the intranet deploy. To push everywhere at once:
+
+```bash
+git remote set-url --add --push gitea "$(git remote get-url gitea)"
+# then `git push gitea main` pushes to both URLs registered on `gitea`
+```
+
+> Order matters: run `set-url --add --push` **after** `git remote get-url gitea`
+> returns the real URL, otherwise you can register the same URL twice.
+
+### Publishing safeguards
+
+- `.env` is gitignored and must never be committed; it holds `AGENT_TOKEN`.
+- Sample payloads under `tests/fixtures/` and `docs/legacy/` use placeholders
+  (`host-a`, `CPU`, generic disk models), not real host identities.
+- `.git` carries the Gitea URL in `origin`/`gitea` config. When shipping the
+  repository as an archive, export a clean copy instead:
+
+  ```bash
+  git clone --no-local . /tmp/hwmon-clean
+  cd /tmp/hwmon-clean && git remote remove origin
+  ```
+
+## Optional: Gitea Actions auto-deploy
 
 If you self-host Gitea, the repo ships a ready-made workflow
 ([`.gitea/workflows/deploy.yaml`](.gitea/workflows/deploy.yaml)) that rebuilds
 and rolls the web container on every push to `main`. See
 [docs/deployment-ci.md](docs/deployment-ci.md) for setup (secrets + runner).
 
-### License
+## License
 
 [MIT](LICENSE)
 
 ---
-
-## 中文
-
-### 平台要求
-
-| 组件 | 要求 |
-|---|---|
-| 操作系统 | **Linux**（agent 直接读 `/proc`、`/sys`，不支持 Windows/macOS） |
-| 初始化系统 | **systemd**（agent 以 systemd 服务方式运行） |
-| 显卡 | **仅 AMD**（要求 `vendor == 0x1002`，NVIDIA/Intel/Apple GPU 会被跳过）；CPU 核显温度（coretemp/zenpower）正常显示 |
-| Python | **3.8+**，只用标准库，无需 `pip install` |
-| web 宿主机 | 任何能访问 agent 的机器（Docker 可选） |
-
-> **注意：** 如果你用 NVIDIA 显卡或 Windows，本项目不适合你，请不要为此开 issue。agent 刻意保持最小化，只面向 Linux + AMD。
-
-### 监控指标
-
-- **CPU**：使用率、温度（`k10temp`/`coretemp`/`zenpower`）、频率、型号、load average。
-- **GPU（AMD）**：使用率、显存、温度（显存/边缘/结温）、功耗与功耗上限、PCIe 链路（Gen × 位宽，GB/s）。
-- **内存**：已用/总量、Swap。
-- **磁盘**：各挂载点容量（LVM/分区归并到物理盘）、NVMe 温度（hwmon）、SATA 温度（`drivetemp`）。
-- 磁盘信息每 10 秒刷新（避免频繁唤醒机械盘），其余每秒一次。
-
-### 快速开始
-
-**1. agent — 在被监控的 Linux 宿主机上**
-
-```bash
-sudo mkdir -p /opt/hwmon && sudo cp app.py /opt/hwmon/
-echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe drivetemp   # SATA 盘温度
-sudo cat > /etc/hwmon-agent.env <<EOF
-AGENT_TOKEN=$(openssl rand -hex 16)
-AGENT_LABEL=my-host
-HWMON_VERSION=$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)   # 可选：页面展示的版本号（app.py 来源 commit 的 major.minor.build）
-EOF
-sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
-[Unit]
-Description=hwmon agent
-After=network-online.target
-[Service]
-EnvironmentFile=/etc/hwmon-agent.env
-ExecStart=/usr/bin/python3 /opt/hwmon/app.py agent
-Restart=always
-[Install]
-WantedBy=multi-user.target
-EOF
-sudo systemctl daemon-reload && sudo systemctl enable --now hwmon-agent
-curl -H "X-Token: $(grep TOKEN /etc/hwmon-agent.env | cut -d= -f2)" localhost:9101/api/metrics
-```
-
-**2. web — 任何能访问 agent 的机器**
-
-```bash
-cp .env.example .env   # 填入 AGENT_URL 与共享的 AGENT_TOKEN
-python3 app.py web     # 浏览器打开 http://<web主机>:8080
-```
-
-或用 Docker：
-
-```bash
-docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-stopped \
-  -e AGENT_URL -e AGENT_TOKEN -e HWMON_VERSION <image>
-# 或: docker compose up -d --build（见 docker-compose.yml）
-```
-
-### 安全
-
-- **仅限内网。** 页面与 agent 均为**明文 HTTP，无 TLS、无登录**，千万不要把 8080 / 9101 端口直接暴露公网。
-- 唯一凭证是**共享令牌 `AGENT_TOKEN`**（agent 与 web 两端一致），请用强随机值（`openssl rand -hex 16`）。agent 端留空则不校验 token——多主机内网下不要这样做。
-- 用防火墙把 agent 的 9101 端口限制为仅 web 主机可访问，如
-  `ufw allow from <WEB_HOST_IP> to any port 9101`。
-- 需要远程访问时，把 **web** 容器放在 VPN 或 TLS 反向代理（nginx/caddy）后面，而不是暴露 agent。
-
-### 环境变量
-
-| 变量 | 位置 | 说明 |
-|---|---|---|
-| `AGENT_TOKEN` | 两端 | 共享令牌；agent 端为空则不校验 |
-| `AGENT_URL` | web | agent 地址，如 `http://<agent-ip>:9101` |
-| `AGENT_LABEL` | agent | 可选，页面顶部显示的标签（默认取主机名） |
-| `GPU_NAME` | agent | 覆盖显卡显示名（sysfs 通常没有型号） |
-| `INCLUDE_IGPU` | agent | 设为 1 则显示核显（默认隐藏 VRAM < 2GB 的） |
-| `PORT` | 两端 | 默认 agent 9101 / web 8080 |
-| `HWMON_VERSION` | 两端 | 页面展示的版本号，格式 `major.minor.build`（如 `1.0.123`）。CI 自动填写：`major.minor` 取自 `VERSION` 文件（发版时手动升），build 号 = 总 commit 数（每次 push 自动 +1）。手动部署填 `$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)`，留空显示 `dev`。agent 版本与 web 构建不一致时页面以橙色高亮（提示 agent 未同步更新） |
-
-### 开发与测试
-
-只用标准库，无需安装测试依赖。
-
-```bash
-# 单元测试（39 个用例：数据契约、agent 采样、HTTP 服务、冒烟脚本）
-python3 -m unittest discover -s tests -v
-
-# 部署后冒烟测试（对运行中的 web 实例）
-python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
-```
-
-- [`tests/contract.py`](tests/contract.py) 是 agent 与前端之间的数据契约（`/api/metrics` 字段名），单元测试与冒烟测试都会校验，任何一边改名另一边都会挂。
-- agent 支持 `HWMON_ROOT`（仅测试用）：把 `/proc`、`/sys` 读取重定向到假目录树，单元测试因此无需真实硬件即可运行。
-
-### 已知限制
-
-- LXC/虚机内部的文件系统在宿主机上不可见（其 rootfs 通常在 LVM-thin 上，宿主机不挂载）。
-- 部分 BACO 电源状态配置下 GPU 温度可能读不到，温度缺失时检查 udev 配置。
-- 页面无历史存储；趋势图由浏览器端最近一小时内存采样构成。
-
-### 目录结构
-
-```
-app.py            agent + web 服务（单文件，纯标准库）
-index.html        仪表盘（单文件，中/英双语，无构建步骤）
-VERSION           major.minor 基础版本（如 1.0.0）；build 号 = 总 commit 数
-tests/            测试套件（无第三方依赖）
-  contract.py       /api/metrics 数据契约
-  test_app.py       单元测试（unittest）
-  smoke.py          部署后冒烟测试
-  fixtures/         测试用样例数据
-docs/             部署文档（如 Gitea Actions 自动部署）
-docs/legacy/      重构前的单脚本监控与样例数据
-Dockerfile / docker-compose.yml   web 容器
-```
-
-### 可选：Gitea Actions 自动部署
-
-如果你自托管 Gitea，仓库自带一个现成的工作流（[`.gitea/workflows/deploy.yaml`](.gitea/workflows/deploy.yaml)）：推送 `main` 后自动重建并滚动更新 web 容器。配置方法（Secrets + runner）见
-[docs/deployment-ci.md](docs/deployment-ci.md)。
-
-### 许可证
-
-[MIT](LICENSE)

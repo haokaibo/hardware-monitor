@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""部署后冒烟测试。用法:
+"""Post-deploy smoke test. Usage:
     python3 tests/smoke.py http://127.0.0.1:8080 [--token T] [--expect-index index.html]
-检查: 服务就绪 / 页面是仪表盘 / 线上 index.html 与仓库一致 / /api/metrics 符合契约 / 数据在更新。
-有 FAIL 时退出码为 1; WARN 不影响退出码。只依赖标准库。"""
+Checks: service is up / index.html equals the repo copy / /api/metrics conforms to the
+contract / data is advancing.
+Exits 1 on FAIL; WARN does not affect the exit code. Standard library only."""
 import argparse
 import hashlib
 import json
@@ -25,7 +26,8 @@ def fetch(base, path, token="", timeout=5):
         return e.code, e.headers.get("Content-Type", ""), e.read()
 
 
-def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5, out=print):
+def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5, out=print,
+        page_only=False):
     fails, warns = [], []
 
     def ok(msg):
@@ -39,7 +41,7 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         warns.append(msg)
         out(f"WARN  {msg}")
 
-    # 1. 等服务就绪 (容器刚重启时需要几秒)
+    # 1. wait until ready (a freshly restarted container needs a few seconds)
     last = "no response"
     for _ in range(retries):
         try:
@@ -55,7 +57,7 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         return 1
     ok("/healthz")
 
-    # 2. 页面
+    # 2. page
     st, ctype, body = fetch(base, "/")
     page = body.decode("utf-8", "replace")
     if st != 200:
@@ -73,7 +75,7 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         else:
             fail(f"deployed index.html differs from {expect_index} (stale deploy or cached Docker layer?)")
 
-    # 2.5 版本号 (每次 push 一个新版本; 旧版 app.py 没有该接口时只警告)
+    # 2.5 version (a new build per push; only warn when an older app.py lacks the endpoint)
     try:
         st, _, body = fetch(base, "/api/info")
         v = json.loads(body).get("version", "") if st == 200 else ""
@@ -84,7 +86,12 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
     else:
         warn(f"/api/info returned HTTP {st} (old app.py without /api/info?)")
 
-    # 3. 数据契约 (agent 刚启动时 STATE 可能还是空的, 重试)
+    if page_only:
+        # CI without a reachable agent: everything above is page/service integrity only
+        out(f"INFO  page-only mode: skipped /api/metrics contract ({len(fails)} fail, {len(warns)} warn)")
+        return 1 if fails else 0
+
+    # 3. data contract (STATE may still be empty right after agent start, so retry)
     st, body, m = 0, b"", None
     for _ in range(retries):
         try:
@@ -108,7 +115,7 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         if m.get("error"):
             warn(f"agent reports an error: {m['error']}")
 
-        # 4. 数据在更新 (用 ts 是否前进判断, 不依赖两台机器的时钟是否同步)
+        # 4. data is advancing: judged by whether ts moves, not by comparing two clocks
         ts1 = m.get("ts")
         time.sleep(fresh_wait)
         try:
@@ -121,7 +128,7 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         else:
             fail(f"agent ts not advancing ({ts1} -> {ts2}); sampling loop stuck?")
 
-    # 5. favicon (镜像里没 COPY 时 404, 只警告)
+    # 5. favicon (404 when the image did not COPY it; warn only)
     st, _, _ = fetch(base, "/favicon.svg")
     if st == 200:
         ok("/favicon.svg")
@@ -136,11 +143,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("base_url")
     ap.add_argument("--token", default="")
-    ap.add_argument("--expect-index", help="仓库里的 index.html 路径; 与线上内容的 sha256 比对")
+    ap.add_argument("--expect-index", help="path to the repo index.html; compared with the live content by sha256")
+    ap.add_argument("--page-only", action="store_true",
+                    help="skip /api/metrics checks (no agent reachable, e.g. a bare CI build)")
     ap.add_argument("--retries", type=int, default=15)
     ap.add_argument("--delay", type=float, default=2.0)
     a = ap.parse_args()
-    sys.exit(run(a.base_url, a.token, a.expect_index, a.retries, a.delay))
+    sys.exit(run(a.base_url, a.token, a.expect_index, a.retries, a.delay, page_only=a.page_only))
 
 
 if __name__ == "__main__":

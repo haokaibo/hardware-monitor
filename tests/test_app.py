@@ -1,4 +1,4 @@
-"""app.py 的单元测试 (标准库 unittest)。运行: python3 -m unittest discover -s tests -v"""
+"""Unit tests for app.py (stdlib unittest). Run: python3 -m unittest discover -s tests -v"""
 import http.client
 import json
 import os
@@ -23,7 +23,7 @@ import smoke  # noqa: E402
 SAMPLE = json.loads((HERE / "fixtures" / "sample_metrics.json").read_text())
 
 
-# ---------------------------------------------------------------- 工具
+# ---------------------------------------------------------------- helpers
 def w(root, rel, content=""):
     p = Path(root) / rel.lstrip("/")
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,7 @@ def link(root, rel, target_rel):
     os.symlink(str(Path(root) / target_rel.lstrip("/")), p)
 
 
-# 第 4、5 列是 idle、iowait, 二者都算"空闲": 总量 1000, 空闲 800 (700 + 100)
+# columns 4 and 5 are idle and iowait; both count as idle: total 1000, idle 800 (700 + 100)
 STAT1 = "cpu  100 0 100 700 100 0 0 0 0 0\ncpu0 50 0 50 350 50 0 0 0 0 0\ncpu1 50 0 50 350 50 0 0 0 0 0\nintr 1\n"
 STAT2 = "cpu  150 0 150 780 120 0 0 0 0 0\ncpu0 75 0 75 390 60 0 0 0 0 0\ncpu1 75 0 75 390 60 0 0 0 0 0\nintr 2\n"
 
@@ -53,10 +53,11 @@ def build_host(root, mnt):
     w(root, "/sys/class/hwmon/hwmon0/name", "k10temp")
     w(root, "/sys/class/hwmon/hwmon0/temp1_input", 45000)
     w(root, "/sys/class/hwmon/hwmon0/temp1_label", "Tctl")
-    w(root, "/sys/class/hwmon/hwmon1/name", "nvme")          # 不是 CPU 传感器, 必须被忽略
+    w(root, "/sys/class/hwmon/hwmon1/name", "nvme")          # not a CPU sensor; must be ignored
     w(root, "/sys/class/hwmon/hwmon1/temp1_input", 99000)
 
-    # GPU: card0 = 独显; card1 = 核显 (512MB, 应被跳过); card2 = 非 AMD; card0-DP-1 = 接口目录
+    # GPU: card0 = discrete; card1 = iGPU (512 MB, must be skipped); card2 = non-AMD;
+    # card0-DP-1 = connector directory
     d = "/sys/class/drm/card0/device"
     w(root, d + "/vendor", "0x1002")
     w(root, d + "/mem_info_vram_total", 34342961152)
@@ -77,7 +78,7 @@ def build_host(root, mnt):
     w(root, "/sys/class/drm/card2/device/mem_info_vram_total", 34342961152)
     (Path(root) / "sys/class/drm/card0-DP-1").mkdir(parents=True, exist_ok=True)
 
-    # 磁盘: nvme0n1 (p1 = boot, p2 -> dm-0 = data) / sda (HDD, sda1) / sdb (SATA SSD, 无挂载)
+    # disks: nvme0n1 (p1 = boot, p2 -> dm-0 = data) / sda (HDD, sda1) / sdb (SATA SSD, unmounted)
     for n, rot in (("nvme0n1", 0), ("sda", 1), ("sdb", 0)):
         w(root, f"/sys/block/{n}/queue/rotational", rot)
         w(root, f"/sys/block/{n}/size", 2000000)
@@ -92,7 +93,7 @@ def build_host(root, mnt):
     for part, disk in (("nvme0n1p1", "nvme0n1"), ("nvme0n1p2", "nvme0n1"), ("sda1", "sda")):
         w(root, f"/sys/devices/{disk}/{part}/partition", 1)
         link(root, f"/sys/class/block/{part}", f"/sys/devices/{disk}/{part}")
-    for ignored in ("loop0", "dm-0", "md0"):                # /sys/block 里这些要被 disks() 跳过
+    for ignored in ("loop0", "dm-0", "md0"):                # disks() must skip these in /sys/block
         w(root, f"/sys/block/{ignored}/size", 1)
     (Path(root) / "sys/class/block/dm-0/slaves").mkdir(parents=True, exist_ok=True)
     link(root, "/sys/class/block/dm-0/slaves/nvme0n1p2", "/sys/class/block/nvme0n1p2")
@@ -103,13 +104,13 @@ def build_host(root, mnt):
       f"/dev/nvme0n1p1 {mnt}/boot vfat rw 0 0\n"
       f"/dev/dm-0 {mnt}/data ext4 rw 0 0\n"
       f"/dev/sda1 {mnt}/hdd ext4 rw 0 0\n"
-      f"/dev/sda1 {mnt}/hdd-bind ext4 rw 0 0\n"             # 同一设备再次挂载: 只算一次
-      f"/dev/loop0 {mnt}/snap squashfs ro 0 0\n"             # squashfs: 忽略
-      f"tmpfs {mnt}/ram tmpfs rw 0 0\n")                     # 非 /dev/: 忽略
+      f"/dev/sda1 {mnt}/hdd-bind ext4 rw 0 0\n"             # same device mounted twice: counted once
+      f"/dev/loop0 {mnt}/snap squashfs ro 0 0\n"             # squashfs: ignored
+      f"tmpfs {mnt}/ram tmpfs rw 0 0\n")                     # not under /dev/: ignored
 
 
 class FakeHost(unittest.TestCase):
-    """基类: 为每个用例建一台假主机, 并把 app.ROOT 指过去。"""
+    """Base class: build a fake host per test case and point app.ROOT at it."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -126,7 +127,7 @@ class FakeHost(unittest.TestCase):
             os.environ.pop(k, None)
 
 
-# ---------------------------------------------------------------- 解析函数
+# ---------------------------------------------------------------- parsers
 class ParserTests(unittest.TestCase):
     def test_gen_mapping(self):
         self.assertEqual(app._gen("2.5 GT/s PCIe"), 1)
@@ -158,30 +159,30 @@ class ParserTests(unittest.TestCase):
             p = app.pcie(d)
             self.assertIsNone(p["gen"])
             self.assertNotIn("gbps", p)
-        self.assertEqual(app.pcie("/nonexistent")["gen"], None)       # 目录不存在也不抛异常
+        self.assertEqual(app.pcie("/nonexistent")["gen"], None)       # a missing directory must not raise
 
     def test_temps(self):
         with tempfile.TemporaryDirectory() as d:
             w(d, "temp1_input", 41500)
             w(d, "temp1_label", "Tctl")
-            w(d, "temp2_input", 50000)                    # 无 label -> 用 temp2
-            w(d, "temp3_input", "garbage")                # 读不出数字 -> 忽略
+            w(d, "temp2_input", 50000)                    # no label -> fall back to temp2
+            w(d, "temp3_input", "garbage")                # unparsable -> ignored
             self.assertEqual(app.temps([d]), {"Tctl": 41.5, "temp2": 50.0})
         self.assertEqual(app.temps(["/nonexistent"]), {})
 
 
-# ---------------------------------------------------------------- 采集函数 (假 sysfs)
+# ---------------------------------------------------------------- collectors (fake sysfs)
 class CollectorTests(FakeHost):
     def test_cpu(self):
         first = app.cpu()
-        self.assertIsNone(first["usage"])                 # 第一次没有上一次样本, 无法算使用率
+        self.assertIsNone(first["usage"])                 # no previous sample yet, so usage is unknown
         w(self.root, "/proc/stat", STAT2)
         c = app.cpu()
-        self.assertEqual(c["usage"], 50.0)                # 总量 +200, 空闲(idle+iowait) +100
+        self.assertEqual(c["usage"], 50.0)                # total +200, idle (idle+iowait) +100
         self.assertEqual(c["threads"], 2)
         self.assertEqual(c["model"], "Fake CPU 9000")
         self.assertEqual(c["freq_mhz"], 2000)
-        self.assertEqual(c["temp"], 45.0)                 # 取 k10temp 的 Tctl, 不是 nvme 的 99°C
+        self.assertEqual(c["temp"], 45.0)                 # k10temp Tctl, not the nvme 99 C reading
 
     def test_cpu_temp_fallback_to_max(self):
         (Path(self.root) / "sys/class/hwmon/hwmon0/temp1_label").unlink()
@@ -196,7 +197,7 @@ class CollectorTests(FakeHost):
 
     def test_gpus_picks_only_discrete_amd(self):
         g = app.gpus()
-        self.assertEqual(len(g), 1)                       # 核显、非 AMD、接口目录都被排除
+        self.assertEqual(len(g), 1)                       # iGPU, non-AMD and connector dirs all excluded
         g = g[0]
         self.assertEqual(g["name"], "Fake Radeon")
         self.assertEqual((g["usage"], g["vram_used"]), (3, 1073741824))
@@ -209,24 +210,24 @@ class CollectorTests(FakeHost):
         os.environ["INCLUDE_IGPU"] = "1"
         names = [g["name"] for g in app.gpus()]
         self.assertEqual(names[0], "My Card")
-        self.assertEqual(len(names), 2)                   # 打开 INCLUDE_IGPU 后核显也算
+        self.assertEqual(len(names), 2)                   # with INCLUDE_IGPU the iGPU counts too
 
     def test_parents(self):
-        self.assertEqual(app.parents("nvme0n1p1"), ["nvme0n1"])      # 分区 -> 整盘
-        self.assertEqual(app.parents("sda"), ["sda"])                # 整盘 -> 自己
-        self.assertEqual(app.parents("dm-0"), ["nvme0n1"])           # LVM/dm -> slaves -> 分区 -> 整盘
+        self.assertEqual(app.parents("nvme0n1p1"), ["nvme0n1"])      # partition -> whole drive
+        self.assertEqual(app.parents("sda"), ["sda"])                # whole drive -> itself
+        self.assertEqual(app.parents("dm-0"), ["nvme0n1"])           # LVM/dm -> slaves -> partition -> drive
         self.assertEqual(app.parents("does-not-exist"), [])
 
     def test_disks(self):
         ds = {d["name"]: d for d in app.disks()}
-        self.assertEqual(set(ds), {"nvme0n1", "sda", "sdb"})         # loop / dm / md 被跳过
+        self.assertEqual(set(ds), {"nvme0n1", "sda", "sdb"})         # loop / dm / md are skipped
         self.assertEqual((ds["nvme0n1"]["kind"], ds["sda"]["kind"], ds["sdb"]["kind"]), ("NVMe", "HDD", "SSD"))
-        self.assertEqual(ds["nvme0n1"]["temp"], 30.0)                # 优先 Composite
-        self.assertEqual(ds["sda"]["temp"], 33.0)                    # 没有 Composite 时取第一个
+        self.assertEqual(ds["nvme0n1"]["temp"], 30.0)                # prefer Composite
+        self.assertEqual(ds["sda"]["temp"], 33.0)                    # without Composite, take the first
         self.assertIsNone(ds["sdb"]["temp"])
         self.assertEqual(ds["nvme0n1"]["size"], 2000000 * 512)
         self.assertEqual(sorted(f["mount"] for f in ds["nvme0n1"]["fs"]), sorted([f"{self.mnt}/boot", f"{self.mnt}/data"]))
-        self.assertEqual([f["mount"] for f in ds["sda"]["fs"]], [f"{self.mnt}/hdd"])   # 重复挂载只算一次
+        self.assertEqual([f["mount"] for f in ds["sda"]["fs"]], [f"{self.mnt}/hdd"])   # duplicate mount counted once
         self.assertEqual(ds["sdb"]["fs"], [])
         f = ds["sda"]["fs"][0]
         self.assertEqual(f["fstype"], "ext4")
@@ -244,7 +245,7 @@ class SampleTests(FakeHost):
     def test_sample_matches_contract_and_is_json(self):
         app.sample(0)
         self.assertEqual(contract.check_payload(app.STATE), [])
-        json.dumps(app.STATE)                              # 必须能序列化 (如 getloadavg 的元组)
+        json.dumps(app.STATE)                              # must be serializable (e.g. getloadavg tuples)
         self.assertIsNone(app.STATE["error"])
 
     def test_disks_only_refreshed_every_10_samples(self):
@@ -261,7 +262,7 @@ class SampleTests(FakeHost):
         (Path(self.root) / "proc/meminfo").unlink()
         with self.assertRaises(KeyError):
             app.sample(1)
-        self.assertEqual(app.STATE["ts"], ts)              # ts 不前进, 前端才能判断"数据停滞"
+        self.assertEqual(app.STATE["ts"], ts)              # ts must not advance so the UI can detect staleness
 
     def test_label_from_env(self):
         os.environ["AGENT_LABEL"] = "host-a"
@@ -269,7 +270,7 @@ class SampleTests(FakeHost):
         self.assertEqual(app.STATE["label"], "host-a")
 
 
-# ---------------------------------------------------------------- 数据契约
+# ---------------------------------------------------------------- data contract
 class ContractTests(unittest.TestCase):
     def test_fixture_matches_contract(self):
         self.assertEqual(contract.check_payload(SAMPLE), [])
@@ -321,7 +322,7 @@ def free_port():
 
 
 class FakeAgent:
-    """web 模式要转发到的假 agent: 记录收到的请求头, 返回可配置的状态码与内容。"""
+    """Fake agent the web mode proxies to: records request headers, returns a configurable status and body."""
 
     def __init__(self, status=200, payload=None, counter=False):
         outer = self
@@ -336,7 +337,7 @@ class FakeAgent:
                 outer.n += 1
                 data = dict(outer.payload or {})
                 if outer.counter:
-                    data["ts"] = 1000.0 + outer.n          # 每次请求 ts 前进, 模拟持续采样
+                    data["ts"] = 1000.0 + outer.n          # ts advances per request, simulating live sampling
                 body = json.dumps(data).encode()
                 self.send_response(outer.status)
                 self.send_header("Content-Type", "application/json")
@@ -412,14 +413,14 @@ class WebHttpTests(unittest.TestCase):
         self.assertEqual(st, 200)
         self.assertEqual(h["content-type"], "text/html; charset=utf-8")
         self.assertEqual(body, self.index.read_bytes())
-        self.assertEqual(get(self.srv.port, "/?x=1")[0], 200)                       # 忽略查询串
+        self.assertEqual(get(self.srv.port, "/?x=1")[0], 200)                       # query string ignored
         st, h, _ = get(self.srv.port, "/favicon.svg")
         self.assertEqual((st, h["content-type"]), (200, "image/svg+xml"))
 
     def test_missing_files_return_404_not_dropped_connection(self):
         self.index.unlink()
         (self.dir / "favicon.svg").unlink()
-        self.assertEqual(get(self.srv.port, "/")[0], 404)         # 之前文件缺失会让 nginx 报 502
+        self.assertEqual(get(self.srv.port, "/")[0], 404)         # a missing file used to surface as nginx 502
         self.assertEqual(get(self.srv.port, "/favicon.svg")[0], 404)
 
     def test_only_whitelisted_paths_are_served(self):
@@ -442,7 +443,7 @@ class WebHttpTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"AGENT_URL": f"http://127.0.0.1:{free_port()}"}):
             st, _, body = get(self.srv.port, "/api/metrics")
         self.assertEqual(st, 502)
-        self.assertTrue(json.loads(body)["error"].startswith("无法连接 agent"))   # 前端按这个前缀做英文替换
+        self.assertTrue(json.loads(body)["error"].startswith("无法连接 agent"))   # the frontend keys its English substitution off this prefix
 
     def test_missing_agent_url_becomes_502(self):
         env = {k: v for k, v in os.environ.items() if k != "AGENT_URL"}
@@ -450,7 +451,7 @@ class WebHttpTests(unittest.TestCase):
             self.assertEqual(get(self.srv.port, "/api/metrics")[0], 502)
 
 
-# ---------------------------------------------------------------- 冒烟脚本本身
+# ---------------------------------------------------------------- the smoke script itself
 class SmokeScriptTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -484,7 +485,7 @@ class SmokeScriptTests(unittest.TestCase):
         self.assertTrue(any("differs" in l for l in self.log))
 
     def test_detects_stuck_agent(self):
-        self.agent.counter = False                          # ts 不再前进
+        self.agent.counter = False                          # ts stops advancing
         self.assertEqual(self.run_smoke(), 1)
         self.assertTrue(any("not advancing" in l for l in self.log))
 
@@ -512,7 +513,7 @@ class SmokeScriptTests(unittest.TestCase):
         self.srv.stop()
         self.assertEqual(self.run_smoke(), 1)
         self.assertTrue(any("not ready" in l for l in self.log))
-        self.srv = Server(app.H)                            # 让 addCleanup 的 stop 仍然有效
+        self.srv = Server(app.H)                            # keeps the addCleanup stop() valid
 
 
 if __name__ == "__main__":

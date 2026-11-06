@@ -1,112 +1,61 @@
-# Gitea Actions 自动部署（可选）
+# Optional: Gitea Actions auto-deploy
 
-本仓库自带 Gitea Actions 部署工作流（[`.gitea/workflows/deploy.yaml`](../.gitea/workflows/deploy.yaml)）：推送 `main` 分支后自动重建并更新 Docker 宿主机上的 `hwmon-web` 容器，无需额外配置。工作流内容如下。
+This repository ships a Gitea Actions workflow
+([`.gitea/workflows/deploy.yaml`](../.gitea/workflows/deploy.yaml)) that rebuilds
+and rolls the `hwmon-web` container on the Docker host on every push to `main`.
 
-```yaml
-name: deploy-hwmon
+> **GitHub note:** GitHub does not read `.gitea/workflows/`, so this workflow
+> never runs there. The GitHub side uses
+> [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), which only builds and
+> smoke-tests the image — it does not deploy. Keeping both remotes is described
+> in [README → Two remotes](../README.md#two-remotes-gitea--github).
 
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+## What it needs
 
-concurrency:
-  group: deploy-hwmon
-  cancel-in-progress: true
+| Requirement | Why |
+|---|---|
+| A self-hosted runner **on the Docker host**, labelled `hwmon-host` | The job runs `docker compose` locally and must reach the intranet |
+| Secret `GIT_REPO_URL` | `http://<GITEA_HOST>:3000/<owner>/<repo>.git`, **without** credentials |
+| Secret `DEPLOY_TOKEN` | A Gitea token that can read the repository; injected into the clone URL |
+| Secret `AGENT_URL` | Address the web container uses to reach the agent |
+| Secret `AGENT_TOKEN` | Shared token between web and agent |
 
-jobs:
-  deploy:
-    # 需要一台位于 Docker 宿主机上的 runner，
-    # 且该 runner 带有 hwmon-host 标签。
-    runs-on: hwmon-host
-    steps:
-      - name: Fetch code and rebuild container
-        env:
-          GIT_REPO_URL: ${{ secrets.GIT_REPO_URL }}
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
-          AGENT_URL: ${{ secrets.AGENT_URL }}
-          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
-          GIT_TERMINAL_PROMPT: "0"
-        run: |
-          set -euo pipefail
-          WORKDIR="$(mktemp -d)"
-          trap 'rm -rf "$WORKDIR"' EXIT
+Deploy directory is `/opt/hwmon`; the container is `hwmon-web` and listens on
+`127.0.0.1:8080` (published as `8080:8080`).
 
-          # 1) 拉取 main 分支最新代码（GIT_REPO_URL 形如 http://host:port/owner/repo.git，不含凭据）
-          if [ -z "${GIT_REPO_URL:-}" ]; then
-            echo "缺少 Gitea Secret: GIT_REPO_URL（形如 http://<GITEA_HOST>:3000/<owner>/<repo>.git）" >&2
-            exit 1
-          fi
-          # 诊断（不泄露 token）：确认 Secret 已配置
-          echo "GIT_REPO_URL 已配置: [${GIT_REPO_URL}]"
-          if [ -z "${DEPLOY_TOKEN:-}" ]; then
-            echo "缺少 Gitea Secret: DEPLOY_TOKEN（可读该仓库的 Gitea token）" >&2
-            exit 1
-          fi
-          # 把凭据注入 URL：http://host/... -> http://deploy:<token>@host/...
-          # 不用字符串替换（各版本 bash 对 // 的处理不一致），用 %/: 拆分 + 拼接
-          case "$GIT_REPO_URL" in
-            http://*|https://*) ;;
-            *) echo "GIT_REPO_URL 需为 http(s):// 开头" >&2; exit 1 ;;
-          esac
-          SCHEME="${GIT_REPO_URL%%://*}"
-          HOST_PATH="${GIT_REPO_URL#*://}"
-          GIT_REPO_URL="$SCHEME://deploy:$DEPLOY_TOKEN@$HOST_PATH"
-          # 诊断（不泄露 token）：确认凭据已注入、scheme 正确
-          echo "clone URL（token 已隐藏）: ${GIT_REPO_URL/deploy:*deploy:<token>@}"
-          # 完整 clone (不用 --depth 1)：版本号需要总 commit 数作为 build 号
-          git clone --branch main "$GIT_REPO_URL" "$WORKDIR/src"
+## Manual fallback
 
-          # 2) 同步到部署目录；保留宿主机上的 .env，并兼容未安装 rsync 的机器
-          DEPLOY_DIR=/opt/hwmon
-          mkdir -p "$DEPLOY_DIR"
-          if command -v rsync >/dev/null 2>&1; then
-            rsync -a --delete \
-              --exclude '.git' --exclude '.gitea' --exclude '.env' \
-              --exclude '.venv' --exclude '__pycache__' \
-              "$WORKDIR/src/" "$DEPLOY_DIR/"
-          else
-            echo "未找到 rsync，改用 find + cp 同步"
-            find "$DEPLOY_DIR" -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +
-            cp -a "$WORKDIR/src/." "$DEPLOY_DIR/"
-            rm -rf "$DEPLOY_DIR/.git" "$DEPLOY_DIR/.gitea"
-          fi
-
-          # 3) 用 Gitea Secrets 写入运行时配置；未配置 secrets 时沿用宿主机已有 .env
-          # 版本号 = major.minor (VERSION 文件, 手动升) + build 号 (总 commit 数, 每次 push 自动 +1)
-          # 形如 1.0.123; 容器启动后展示在页面右上角
-          HWMON_VERSION="$(cut -d. -f1,2 "$WORKDIR/src/VERSION").$(git -C "$WORKDIR/src" rev-list --count HEAD)"
-          if [ -n "${AGENT_URL:-}" ] && [ -n "${AGENT_TOKEN:-}" ]; then
-            umask 077
-            printf 'AGENT_URL=%s\nAGENT_TOKEN=%s\nHWMON_VERSION=%s\n' "$AGENT_URL" "$AGENT_TOKEN" "$HWMON_VERSION" > "$DEPLOY_DIR/.env"
-            echo "HWMON_VERSION=$HWMON_VERSION 已写入 $DEPLOY_DIR/.env"
-          fi
-          if [ ! -f "$DEPLOY_DIR/.env" ]; then
-            echo "缺少 $DEPLOY_DIR/.env，请在仓库 Secrets 配置 AGENT_URL / AGENT_TOKEN" >&2
-            exit 1
-          fi
-
-          # 4) 重建镜像并滚动更新容器
-          cd "$DEPLOY_DIR"
-          docker compose up -d --build
-          docker image prune -f >/dev/null 2>&1 || true           # 旧的悬空镜像
-          docker builder prune -f --filter until=168h >/dev/null 2>&1 || true   # 7 天前的构建缓存
-          docker system df
-          docker compose ps
-
-      - name: Health check
-        run: |
-          set -e
-          for i in $(seq 1 30); do
-            status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' hwmon-web 2>/dev/null || echo missing)"
-            if [ "$status" = "healthy" ] || curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
-              echo "✅ hwmon-web 健康检查通过 (health=$status)"
-              docker ps --filter name=hwmon-web --format '{{.Names}}  {{.Status}}'
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "❌ 健康检查失败，最近日志：" >&2
-          docker logs --tail 60 hwmon-web 2>&1 || true
-          exit 1
+```bash
+sudo git clone http://<GITEA_HOST>:3000/<owner>/<repo>.git /opt/hwmon
+cd /opt/hwmon
+cp .env.example .env      # set AGENT_URL and AGENT_TOKEN
+docker compose up -d --build
 ```
+
+The build version is `major.minor` from [`VERSION`](../VERSION) plus the total
+commit count, e.g. `1.0.123`. CI writes it into `.env` as `HWMON_VERSION`; for
+manual deploys:
+
+```bash
+HWMON_VERSION="$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)"
+```
+
+The page shows the web build version at the bottom right and highlights it in
+amber when the agent reports a different version (agent not yet updated).
+
+## Workflow source
+
+The job is a single `runs-on: hwmon-host` step that:
+
+1. clones `main` (full clone, not `--depth 1`, because the build number is the
+   total commit count),
+2. rsyncs the tree into `/opt/hwmon` while preserving the host's `.env`
+   (falls back to `find` + `cp` when rsync is absent),
+3. writes `AGENT_URL` / `AGENT_TOKEN` / `HWMON_VERSION` from secrets,
+4. runs `docker compose up -d --build`, then prunes dangling images and build
+   cache older than 7 days,
+5. polls `docker inspect` health (or `/healthz`) for up to 60 s and dumps the
+   last 60 log lines on failure.
+
+See the commented YAML itself for the exact commands; it is the single source
+of truth and is not duplicated here.

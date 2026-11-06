@@ -1,0 +1,70 @@
+# GitHub Actions: build verification only. Never deploys.
+#
+# The Gitea workflow (.gitea/workflows/deploy.yaml) is what actually deploys to
+# the Docker host; GitHub-hosted runners cannot reach that intranet. This job
+# proves that what lands on GitHub still builds and boots, so a GitHub build is
+# green independently of the intranet Gitea deployment.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # build number needs the full commit count
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run unittest suite (stdlib only)
+        run: python3 -m unittest discover -s tests -v
+
+  build:
+    name: docker build + smoke
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build image
+        run: |
+          VERSION="$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)"
+          echo "HWMON_VERSION=$VERSION" >> "$GITHUB_ENV"
+          docker build -t hwmon-web:ci .
+      # No agent is reachable in CI, so the web container starts and serves the
+      # page while /api/metrics returns 502 from the proxy. The smoke test is
+      # therefore run with --expect-index only (page integrity + /healthz),
+      # not the full metrics contract.
+      - name: Boot container and smoke the page
+        run: |
+          set -euo pipefail
+          docker run -d --name hwmon-ci -p 8080:8080 \
+            -e AGENT_URL=http://127.0.0.1:9101 -e AGENT_TOKEN=ci -e HWMON_VERSION="$HWMON_VERSION" \
+            hwmon-web:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          python3 tests/smoke.py http://127.0.0.1:8080 --expect-index index.html --page-only
+          docker logs --tail 40 hwmon-ci
+      - name: Container stayed up
+        run: test "$(docker inspect -f '{{.State.Running}}' hwmon-ci)" = "true"
+      - name: Dump logs on failure
+        if: failure()
+        run: docker logs --tail 80 hwmon-ci || true
+      - name: Clean up
+        if: always()
+        run: docker rm -f hwmon-ci || true

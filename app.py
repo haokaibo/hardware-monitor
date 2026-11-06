@@ -10,8 +10,8 @@ MODE = sys.argv[1] if len(sys.argv) > 1 else "web"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 INDEX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 STATE = {}
-ROOT = os.environ.get("HWMON_ROOT", "")  # 仅测试用: 把 /proc、/sys 重定向到假目录; 生产环境为空
-VERSION = os.environ.get("HWMON_VERSION") or "dev"   # 页面展示的版本号 (major.minor.build); CI 自动填写
+ROOT = os.environ.get("HWMON_ROOT", "")  # test-only: redirect /proc and /sys reads to a fake tree; empty in production
+VERSION = os.environ.get("HWMON_VERSION") or "dev"   # version shown on the page (major.minor.build); CI fills this in
 
 
 def rd(p):
@@ -20,7 +20,7 @@ def rd(p):
 
 
 def read_text(p):
-    """读取整个文件; 失败 (不存在/无权限) 返回 None。"""
+    """Read a whole file; return None on failure (missing / no permission)."""
     try:
         with open(p) as f:
             return f.read()
@@ -95,7 +95,7 @@ def _gen(txt):  # "16.0 GT/s PCIe" -> 4
 def pcie(d):
     p = {"gen": _gen(rd(d + "/current_link_speed")), "width": _num(rd(d + "/current_link_width")),
          "max_gen": _gen(rd(d + "/max_link_speed")), "max_width": _num(rd(d + "/max_link_width"))}
-    if p["gen"] and p["width"]:  # GT/s = Gb/s/lane, /8 得 GB/s, x 位宽 = 单向总带宽 (GB/s)
+    if p["gen"] and p["width"]:  # GT/s = Gb/s per lane; /8 -> GB/s; x width -> one-way bandwidth (GB/s)
         p["gbps"] = round([2.5, 5, 8, 16, 32, 64][p["gen"] - 1] / 8 * p["width"])
     return p
 
@@ -109,7 +109,7 @@ def gpus():
         tot = num(d + "/mem_info_vram_total")
         if rd(d + "/vendor") != "0x1002" or not tot:
             continue
-        if tot < 2 ** 31 and not os.environ.get("INCLUDE_IGPU"):  # 跳过核显
+        if tot < 2 ** 31 and not os.environ.get("INCLUDE_IGPU"):  # skip the iGPU
             continue
         pw = next((num(f) for f in glob.glob(d + "/hwmon/hwmon*/power1_average")
                    + glob.glob(d + "/hwmon/hwmon*/power1_input") if num(f)), None)
@@ -125,7 +125,7 @@ def gpus():
     return out
 
 
-def parents(n, depth=0):  # dm-/lvm/分区 -> 物理盘
+def parents(n, depth=0):  # dm-/lvm/partition -> physical drive
     b = ROOT + "/sys/class/block/" + n
     if depth > 5 or not os.path.isdir(b):
         return []
@@ -170,10 +170,11 @@ def disks():
     return list(ds.values())
 
 
-def sample(n):  # 采一次样; 任何一项抛异常则整次不写入, ts 不前进 (前端据此判断"数据停滞")
+def sample(n):  # take one sample; if anything raises, nothing is written and ts stays put
+    # (the frontend uses that to detect stalled data)
     STATE.update(label=os.environ.get("AGENT_LABEL", os.uname().nodename),
                  ts=time.time(), version=VERSION, cpu=cpu(), mem=mem(), gpus=gpus(), error=None)
-    if n % 10 == 0:  # 磁盘每 10 秒读一次, 避免频繁唤醒 HDD
+    if n % 10 == 0:  # disks are read every 10 s to avoid waking HDDs
         STATE["disks"] = disks()
 
 
@@ -204,7 +205,7 @@ class H(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/healthz":
             return self.send(200, b"ok", "text/plain")
-        if path == "/api/info":   # 版本号 (web 页面展示; 无需 token)
+        if path == "/api/info":   # version for the page header; no token required
             return self.send(200, json.dumps({"version": VERSION}).encode())
         if path == "/api/metrics":
             if MODE == "agent":
@@ -223,7 +224,8 @@ class H(BaseHTTPRequestHandler):
             try:
                 with open(os.path.join(os.path.dirname(INDEX), name), "rb") as f:
                     return self.send(200, f.read(), ctype)
-            except OSError:  # 文件缺失时返回 404, 不要让异常断开连接 (nginx 会把它报成 502)
+            except OSError:  # missing file -> 404; never let the exception drop the connection
+                # (nginx would surface that as a 502)
                 return self.send(404, b"{}")
         self.send(404, b"{}")
 

@@ -1,20 +1,21 @@
-"""app.py 与 index.html 之间的数据契约: /api/metrics 必须带哪些字段, 前端读取哪些字段。
-单元测试与部署后冒烟测试共用。"""
+"""Data contract between app.py and index.html: which fields /api/metrics must carry
+and which ones the frontend reads. Shared by the unit tests and the smoke test."""
 
 TOP = ["label", "ts", "version", "cpu", "mem", "gpus", "disks", "error"]
 CPU = ["model", "threads", "usage", "freq_mhz", "load", "temp"]
 MEM = ["total", "used", "swap_total", "swap_used"]
 GPU = ["name", "usage", "vram_total", "vram_used", "temps", "power_w", "power_cap_w", "pcie"]
-PCIE = ["gen", "width"]                                   # gbps 仅在 gen、width 都读到时才有
+PCIE = ["gen", "width"]                                   # gbps exists only when both gen and width were read
 DISK = ["name", "kind", "model", "size", "temp", "fs"]
 FS = ["mount", "fstype", "total", "used", "avail"]
 
-# index.html 里会以 `.字段名` 的形式读取的全部字段 (用于检查任何一边改名后另一边没跟上)
+# every field index.html reads as `.field` (catches a rename on one side only)
 FRONTEND_READS = sorted(set(TOP + CPU + MEM + GPU + PCIE + DISK + FS + ["gbps"]))
 
 
 def check_payload(m, require_gpu=True):
-    """返回问题列表; 空列表表示符合契约。字段值允许为 None (例如首个采样的 cpu.usage)。"""
+    """Return a list of problems; empty means the payload conforms. Values may be None
+    (e.g. cpu.usage on the very first sample)."""
     problems = []
 
     def need(obj, keys, where):
