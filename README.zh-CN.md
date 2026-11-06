@@ -26,7 +26,7 @@
 | 操作系统 | **Linux**（agent 直接读 `/proc`、`/sys`，不支持 Windows/macOS） |
 | 初始化系统 | **systemd**（agent 以 systemd 服务方式运行） |
 | 显卡 | **仅 AMD**（要求 `vendor == 0x1002`，NVIDIA/Intel/Apple GPU 会被跳过）；CPU 核显温度（coretemp/zenpower）正常显示 |
-| Python | **3.10+**，只用标准库，无需 `pip install`。下限取自受支持的发行版自带版本：Debian 12 → 3.11、Ubuntu 22.04 → 3.10、Ubuntu 24.04 → 3.12。用系统自带 `python3` 即可，无需额外安装。CI 覆盖 3.10 / 3.11 / 3.12 / 3.13 |
+| Python | **3.10+**，只用标准库，无需 `pip install`。下限取自受支持的发行版自带版本：Debian 12 → 3.11、Ubuntu 22.04 → 3.10、Ubuntu 24.04 → 3.12。用系统自带 `python3` 即可，无需额外安装。CI 覆盖 3.10 / 3.11 / 3.12 / 3.13 / 3.14 |
 | web 宿主机 | 任何能访问 agent 的机器（Docker 可选） |
 
 > **注意：** 如果你用 NVIDIA 显卡或 Windows，本项目不适合你，请不要为此开 issue。agent 刻意保持最小化，只面向 Linux + AMD。

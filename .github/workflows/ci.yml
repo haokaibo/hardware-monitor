@@ -29,10 +29,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # `allow-prereleases` is not enabled, so 3.14 resolves to a stable
+        # CPython on the runner image; setup-python downloads it when the image
+        # does not ship it yet.
         # The floor matches the documented minimum (3.10) so the README claim is
-        # actually verified; the rest track the distro Pythons we expect in the
-        # field (Debian 12 -> 3.11, Ubuntu 24.04 -> 3.12, newer -> 3.13).
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        # actually verified; the middle entries track the distro Pythons we expect
+        # in the field (Debian 12 -> 3.11, Ubuntu 24.04 -> 3.12), and 3.14 catches
+        # breakage on releases newer than any LTS before users hit it.
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v7   # node24 (v4 targets deprecated node20)
         with:
