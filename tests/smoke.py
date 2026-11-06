@@ -1,34 +1,50 @@
-#!/usr/bin/env python3
 """Post-deploy smoke test. Usage:
-    python3 tests/smoke.py http://127.0.0.1:8080 [--token T] [--expect-index index.html]
-Checks: service is up / index.html equals the repo copy / /api/metrics conforms to the
-contract / data is advancing.
-Exits 1 on FAIL; WARN does not affect the exit code. Standard library only."""
+
+    python3 tests/smoke.py http://127.0.0.1:8080 [--token T] [--expect-index PATH]
+
+Checks: service is up / index.html equals the repo copy / /api/metrics conforms
+to the contract / data is advancing. ``--page-only`` skips the metrics checks
+for a CI build with no reachable agent. Exits 1 on FAIL; WARN does not affect
+the exit code. Standard library only, so it runs without the project installed.
+"""
+
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
 import sys
 import time
 from pathlib import Path
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import contract  # noqa: E402
+# Make the contract importable both from a checkout and from an installed env.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+try:
+    from hwmon import contract  # noqa: E402
+except ModuleNotFoundError:  # pragma: no cover - installed as a console script
+    import contract  # type: ignore[no-redef]  # noqa: E402
 
 
-def fetch(base, path, token="", timeout=5):
+def fetch(base: str, path: str, token: str = "", timeout: float = 5):
     req = Request(base.rstrip("/") + path, headers={"X-Token": token} if token else {})
-    try:
-        with urlopen(req, timeout=timeout) as r:
-            return r.status, r.headers.get("Content-Type", ""), r.read()
-    except HTTPError as e:
-        return e.code, e.headers.get("Content-Type", ""), e.read()
+    with urlopen(req, timeout=timeout) as r:
+        return r.status, dict(r.headers), r.read()
 
 
-def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5, out=print,
-        page_only=False):
-    fails, warns = [], []
+def run(
+    base: str,
+    token: str = "",
+    expect_index: str | None = None,
+    retries: int = 15,
+    delay: float = 2.0,
+    fresh_wait: float = 2.5,
+    out=print,
+    page_only: bool = False,
+) -> int:
+    fails: list[str] = []
+    warns: list[str] = []
 
     def ok(msg):
         out(f"PASS  {msg}")
@@ -57,25 +73,32 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         return 1
     ok("/healthz")
 
-    # 2. page
-    st, ctype, body = fetch(base, "/")
-    page = body.decode("utf-8", "replace")
-    if st != 200:
-        fail(f"/ returned HTTP {st}")
-    elif "text/html" not in ctype:
-        fail(f"/ content-type is {ctype!r}, expected text/html")
-    elif 'id="cpu-rows"' not in page:
-        fail('/ is not the hwmon dashboard (marker id="cpu-rows" missing)')
-    else:
-        ok("/ serves the dashboard")
-    if expect_index:
+    # 2. page (a 404 or a dropped connection here is a FAIL, never a traceback)
+    try:
+        st, hdrs, body = fetch(base, "/")
+        ctype = hdrs.get("Content-Type", "")
+        page = body.decode("utf-8", "replace")
+    except (URLError, OSError) as e:
+        st, ctype, page, body = 0, "", "", b""
+        fail(f"/ not reachable: {e}")
+
+    if st != 0:
+        if st != 200:
+            fail(f"/ returned HTTP {st}")
+        elif "text/html" not in ctype:
+            fail(f"/ content-type is {ctype!r}, expected text/html")
+        elif 'id="cpu-rows"' not in page:
+            fail('/ is not the hwmon dashboard (marker id="cpu-rows" missing)')
+        else:
+            ok("/ serves the dashboard")
+    if expect_index and st == 200:
         want = hashlib.sha256(Path(expect_index).read_bytes()).hexdigest()
         if want == hashlib.sha256(body).hexdigest():
             ok(f"deployed index.html matches {expect_index}")
         else:
             fail(f"deployed index.html differs from {expect_index} (stale deploy or cached Docker layer?)")
 
-    # 2.5 version (a new build per push; only warn when an older app.py lacks the endpoint)
+    # 2.5 version (a new build per push; only warn when an older build lacks the endpoint)
     try:
         st, _, body = fetch(base, "/api/info")
         v = json.loads(body).get("version", "") if st == 200 else ""
@@ -84,7 +107,17 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
     if st == 200 and v:
         ok(f"version: {v}")
     else:
-        warn(f"/api/info returned HTTP {st} (old app.py without /api/info?)")
+        warn(f"/api/info returned HTTP {st} (build without /api/info?)")
+
+    # 5. favicon (404 when the package did not ship it; warn only)
+    try:
+        st, _, _ = fetch(base, "/favicon.svg")
+    except (URLError, OSError):
+        st = 0
+    if st == 200:
+        ok("/favicon.svg")
+    else:
+        warn(f"/favicon.svg returned HTTP {st} (missing static asset in the package)")
 
     if page_only:
         # CI without a reachable agent: everything above is page/service integrity only
@@ -115,7 +148,7 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         if m.get("error"):
             warn(f"agent reports an error: {m['error']}")
 
-        # 4. data is advancing: judged by whether ts moves, not by comparing two clocks
+        # 4. data is advancing: judged by whether ts moves, not by comparing clocks
         ts1 = m.get("ts")
         time.sleep(fresh_wait)
         try:
@@ -128,18 +161,11 @@ def run(base, token="", expect_index=None, retries=15, delay=2.0, fresh_wait=2.5
         else:
             fail(f"agent ts not advancing ({ts1} -> {ts2}); sampling loop stuck?")
 
-    # 5. favicon (404 when the image did not COPY it; warn only)
-    st, _, _ = fetch(base, "/favicon.svg")
-    if st == 200:
-        ok("/favicon.svg")
-    else:
-        warn(f"/favicon.svg returned HTTP {st} (add it to the Dockerfile COPY line)")
-
     out(f"{len(fails)} failed, {len(warns)} warnings")
     return 1 if fails else 0
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("base_url")
     ap.add_argument("--token", default="")
@@ -148,9 +174,10 @@ def main():
                     help="skip /api/metrics checks (no agent reachable, e.g. a bare CI build)")
     ap.add_argument("--retries", type=int, default=15)
     ap.add_argument("--delay", type=float, default=2.0)
-    a = ap.parse_args()
-    sys.exit(run(a.base_url, a.token, a.expect_index, a.retries, a.delay, page_only=a.page_only))
+    ap.add_argument("--fresh-wait", type=float, default=2.5)
+    a = ap.parse_args(argv)
+    return run(a.base_url, a.token, a.expect_index, a.retries, a.delay, a.fresh_wait, page_only=a.page_only)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

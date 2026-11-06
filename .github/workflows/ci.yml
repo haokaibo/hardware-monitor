@@ -2,8 +2,7 @@
 #
 # The Gitea workflow (.gitea/workflows/deploy.yaml) is what actually deploys to
 # the Docker host; GitHub-hosted runners cannot reach that intranet. This job
-# proves that what lands on GitHub still builds and boots, so a GitHub build is
-# green independently of the intranet Gitea deployment.
+# proves that what lands on GitHub still builds and boots.
 name: ci
 
 on:
@@ -21,38 +20,53 @@ concurrency:
 # change the toolchain under us.
 env:
   RUNNER_OS_IMAGE: ubuntu-24.04
+  UV_LINK_MODE: copy
+  UV_COMPILE_BYTECODE: 1
 
 jobs:
   test:
-    name: unit tests (py${{ matrix.python-version }})
+    name: tests (py${{ matrix.python-version }})
     runs-on: ${{ env.RUNNER_OS_IMAGE }}
     strategy:
       fail-fast: false
       matrix:
-        # `allow-prereleases` is not enabled, so 3.14 resolves to a stable
-        # CPython on the runner image; setup-python downloads it when the image
-        # does not ship it yet.
-        # The floor matches the documented minimum (3.10) so the README claim is
-        # actually verified; the middle entries track the distro Pythons we expect
-        # in the field (Debian 12 -> 3.11, Ubuntu 24.04 -> 3.12), and 3.14 catches
-        # breakage on releases newer than any LTS before users hit it.
+        # The floor matches requires-python (3.10) so the documented minimum is
+        # actually verified; the rest track the distro Pythons we expect in the
+        # field (Debian 12 -> 3.11, Ubuntu 24.04 -> 3.12) plus 3.14 to catch
+        # breakage on newer releases before users hit it.
         python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v7   # node24 (v4 targets deprecated node20)
         with:
           fetch-depth: 0   # build number needs the full commit count
-      - uses: actions/setup-python@v7   # node24 (v5 targets deprecated node20)
+      - uses: astral-sh/setup-uv@v7
         with:
+          version: "latest"
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
       - name: Show interpreter
-        run: python3 -VV
-      - name: Run unittest suite (stdlib only)
-        run: python3 -m unittest discover -s tests -v
+        run: uv run python -VV
+      - name: Install locked dependencies
+        # --frozen fails loudly if uv.lock is stale instead of resolving anew.
+        run: uv sync --frozen --all-extras
+      - name: Run test suite
+        run: uv run pytest -q
+
+  lock:
+    name: lock file is current
+    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: uv lock --check
+        run: uv lock --check
 
   build:
     name: docker build + smoke
     runs-on: ${{ env.RUNNER_OS_IMAGE }}
-    needs: test
+    needs: [test, lock]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -64,8 +78,7 @@ jobs:
           docker build -t hwmon-web:ci .
       # No agent is reachable in CI, so the web container starts and serves the
       # page while /api/metrics returns 502 from the proxy. The smoke test is
-      # therefore run in --page-only mode (page integrity + /healthz), not the
-      # full metrics contract.
+      # therefore run in --page-only mode (page integrity + /healthz).
       - name: Boot container and smoke the page
         run: |
           set -euo pipefail
@@ -77,7 +90,8 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:8080/healthz
-          python3 tests/smoke.py http://127.0.0.1:8080 --expect-index index.html --page-only
+          python3 tests/smoke.py http://127.0.0.1:8080 \
+            --expect-index src/hwmon/static/index.html --page-only
           docker logs --tail 40 hwmon-ci
       - name: Container stayed up
         run: test "$(docker inspect -f '{{.State.Running}}' hwmon-ci)" = "true"
@@ -87,3 +101,34 @@ jobs:
       - name: Clean up
         if: always()
         run: docker rm -f hwmon-ci || true
+
+  package:
+    name: sdist + wheel
+    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    needs: [test, lock]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Build distributions
+        run: uv build
+      - name: The wheel must contain the dashboard
+        run: |
+          python3 - <<'PY'
+          import zipfile, pathlib, sys
+          wheels = list(pathlib.Path("dist").glob("*.whl"))
+          assert wheels, "no wheel produced"
+          names = zipfile.ZipFile(wheels[0]).namelist()
+          for want in ("hwmon/static/index.html", "hwmon/static/favicon.svg"):
+              if want not in names:
+                  sys.exit(f"wheel is missing {want}")
+          print("wheel contains", len(names), "entries including the dashboard")
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 7

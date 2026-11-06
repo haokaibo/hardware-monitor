@@ -26,11 +26,15 @@ Deploy directory is `/opt/hwmon`; the container is `hwmon-web` and listens on
 ## Manual fallback
 
 ```bash
+sudo curl -LsSf https://astral.sh/uv/install.sh | sh     # uv provisions the interpreter
 sudo git clone http://<GITEA_HOST>:3000/<owner>/<repo>.git /opt/hwmon
 cd /opt/hwmon
 cp .env.example .env      # set AGENT_URL and AGENT_TOKEN
 docker compose up -d --build
 ```
+
+The image installs its dependencies from `uv.lock` with `uv sync --frozen`, so a
+stale lock fails the build instead of silently resolving newer versions.
 
 The build version is `major.minor` from [`VERSION`](../VERSION) plus the total
 commit count, e.g. `1.0.123`. CI writes it into `.env` as `HWMON_VERSION`; for

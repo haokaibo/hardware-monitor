@@ -1,0 +1,75 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hwmon"
+description = "Lightweight self-hosted hardware monitor: one agent on the host, one dashboard in the browser"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dynamic = ["version"]
+keywords = ["monitoring", "hardware", "linux", "amd", "sysfs", "self-hosted"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: No Input/Output (Daemon)",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Hardware",
+    "Topic :: System :: Monitoring",
+]
+dependencies = [
+    "cryptography>=43",
+]
+
+[project.scripts]
+hwmon = "hwmon.cli:main"
+
+[project.optional-dependencies]
+# Kept separate from the default install: neither tool is needed to run the
+# monitor, only to produce a distributable artefact.
+build = ["pyinstaller>=6.10"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.hatch.version]
+# The release line lives in the VERSION file; the build number is the commit
+# count. CI exports HWMON_VERSION=<major.minor>.<count> and the page displays it.
+path = "VERSION"
+pattern = '(?P<version>\d+(?:\.\d+)*)'
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hwmon"]
+# static/ lives inside the package, so hatchling includes it automatically;
+# forcing it in again would add the same file twice and fail the build.
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/VERSION",
+    "/README.md",
+    "/README.zh-CN.md",
+    "/SECURITY.md",
+    "/AGENT.md",
+    "/LICENSE",
+]
+
+[tool.uv]
+# uv resolves against the pinned interpreter (see .python-version) and installs
+# the `build` extra only when explicitly requested.
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

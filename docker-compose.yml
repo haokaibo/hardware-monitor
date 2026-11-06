@@ -1,6 +1,8 @@
 services:
   hwmon-web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: hwmon-web:latest
     container_name: hwmon-web
     restart: unless-stopped

@@ -18,3 +18,22 @@ venv/
 
 # Agent / AI 工具本地配置
 .pi/
+
+# uv / packaging
+.uv/
+dist/
+build/
+*.egg-info/
+*.rpm
+*.spec.bak
+
+# signing keys and licences must never be committed
+*.pem
+*.key
+license.json
+*.sig
+
+# SQLite history database (pro tier)
+*.db
+*.db-wal
+*.db-shm

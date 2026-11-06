@@ -28,7 +28,8 @@ Browser ──► web (:8080) ──► agent (:9101) ──► /proc, /sys
 | OS | **Linux** (agent reads `/proc`, `/sys` directly; Windows/macOS not supported) |
 | Init | **systemd** (the agent is designed to run as a systemd service) |
 | GPU | **AMD only** (`vendor == 0x1002` is required; NVIDIA / Intel / Apple GPUs are skipped). CPU iGPU temp via `coretemp`/`zenpower` hwmon is fine. |
-| Python | **3.10+**, standard library only — no `pip install` needed. The floor is what supported distros ship: Debian 12 → 3.11, Ubuntu 22.04 → 3.10, Ubuntu 24.04 → 3.12. Your distro `python3` is enough; nothing to install. CI tests 3.10 / 3.11 / 3.12 / 3.13 / 3.14 |
+| Python | **3.10+** (checked by `requires-python`). Rocky 8 ships 3.6 and Rocky 9 ships 3.9, so `uv` installs a pinned **3.12** there — you do not need to touch the system Python. CI tests 3.10 / 3.11 / 3.12 / 3.13 / 3.14 |
+| Runtime deps | `cryptography` only (for release/licence signatures). Installed from `uv.lock`, never built on the target by hand. |
 | Web host | Any machine that can reach the agent over the network (Docker optional) |
 
 > **Heads up:** if you use NVIDIA or run Windows, this project is not for
@@ -48,44 +49,97 @@ Browser ──► web (:8080) ──► agent (:9101) ──► /proc, /sys
 
 ## Quick start
 
+Everything goes through [`uv`](https://docs.astral.sh/uv/). It installs the
+pinned interpreter and the locked dependency set, so the versions you run are
+the versions CI verified.
+
+```bash
+git clone <repo> && cd hwmon
+uv sync                    # interpreter + locked deps + the project itself
+```
+
 **1. Agent — on the monitored Linux host**
 
 ```bash
-sudo mkdir -p /opt/hwmon && sudo cp app.py /opt/hwmon/
-echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe drivetemp   # SATA disk temps
-sudo cat > /etc/hwmon-agent.env <<EOF
+echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf   # SATA disk temps
+sudo modprobe drivetemp
+
+# uv manages the interpreter, so a Rocky 8/9 system Python is never used
+curl -LsSf https://astral.sh/uv/install.sh | sh
+sudo mkdir -p /opt/hwmon && sudo git clone <repo> /opt/hwmon
+cd /opt/hwmon && sudo uv sync --frozen --no-dev
+
+sudo install -d -m 0755 /etc/hwmon
+sudo tee /etc/hwmon/agent.env >/dev/null <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
-AGENT_LABEL=my-host
-HWMON_VERSION=$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)   # optional: build version shown on the page (major.minor.build of the commit app.py was copied from)
+AGENT_LABEL=$(hostname)
 EOF
-sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
+sudo chmod 600 /etc/hwmon/agent.env
+
+sudo tee /etc/systemd/system/hwmon-agent.service >/dev/null <<'EOF'
 [Unit]
 Description=hwmon agent
 After=network-online.target
+
 [Service]
-EnvironmentFile=/etc/hwmon-agent.env
-ExecStart=/usr/bin/python3 /opt/hwmon/app.py agent
+EnvironmentFile=/etc/hwmon/agent.env
+ExecStart=/opt/hwmon/.venv/bin/hwmon agent
 Restart=always
+
 [Install]
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload && sudo systemctl enable --now hwmon-agent
-curl -H "X-Token: $(grep TOKEN /etc/hwmon-agent.env | cut -d= -f2)" localhost:9101/api/metrics
+curl -H "X-Token: $(sudo grep TOKEN /etc/hwmon/agent.env | cut -d= -f2)" localhost:9101/api/metrics
 ```
+
+On RHEL-family hosts you can install the RPM instead; it provisions the venv
+into `/opt/hwmon` and installs the same unit. See
+[packaging/hwmonpro.spec](packaging/hwmonpro.spec).
 
 **2. Web — on any machine that can reach the agent**
 
 ```bash
-cp .env.example .env   # set AGENT_URL and the shared AGENT_TOKEN
-python3 app.py web     # open http://<web-host>:8080
+cp .env.example .env      # set AGENT_URL and the shared AGENT_TOKEN
+uv run hwmon web          # open http://<web-host>:8080
 ```
 
-Or with Docker:
+Or with Docker (uses `uv` inside the image too):
 
 ```bash
-docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-stopped \
-  -e AGENT_URL -e AGENT_TOKEN -e HWMON_VERSION <image>
-# or: docker compose up -d --build  (see docker-compose.yml)
+docker compose up -d --build
+# RHEL targets: docker build -f packaging/docker/Dockerfile.rocky9 -t hwmon-web .
+```
+
+**3. Verify a downloaded artefact before installing it**
+
+```bash
+uv run hwmon verify dist/hwmon-1.0.0.tar.gz -k release-public.pem
+```
+
+## Pro tier
+
+Optional modules under `src/hwmon/pro/`, importable without affecting the open
+agent:
+
+| Module | What it adds |
+|---|---|
+| `history.py` | SQLite store of headline metrics, with range queries and bucketed downsampling — trends that outlive a browser session |
+| `alerts.py` | Threshold engine with debounce and hysteresis: fires on the transition into a worse state, not on every sample |
+
+```python
+from hwmon.pro import AlertEngine, HistoryStore
+
+store = HistoryStore("/var/lib/hwmon/history.db")
+engine = AlertEngine(sink=lambda a: print(a.level, a.message))
+engine.evaluate(payload)          # feed each /api/metrics sample
+store.record(payload)
+```
+
+Licences are Ed25519-signed and bound to a machine:
+
+```bash
+uv run python licensing/issue.py --key license-private.pem --machine <id> --days 365 --out license.json
 ```
 
 ## Security
@@ -115,22 +169,26 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 
 ## Development & testing
 
-Standard library only — no test dependencies to install.
-
 ```bash
-# unit tests (39 cases: data contract, agent sampling, HTTP server, smoke script)
-python3 -m unittest discover -s tests -v
+uv sync                       # installs dev deps too
+uv run pytest -q              # 158 tests
+uv lock --check               # fails if uv.lock is stale (CI gate)
+uv build                      # sdist + wheel into dist/
 
-# post-deploy smoke test against a running web instance
-python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
+# post-deploy smoke test against a running instance
+uv run python tests/smoke.py http://127.0.0.1:8080 --token T
+uv run python tests/smoke.py http://127.0.0.1:8080 \
+  --expect-index src/hwmon/static/index.html --page-only
 ```
 
-- [`tests/contract.py`](tests/contract.py) is the shared data contract between agent and
-  frontend (`/api/metrics` field names); both the unit tests and the smoke
-  test enforce it, so a rename on one side fails on the other.
+- [`src/hwmon/contract.py`](src/hwmon/contract.py) is the shared data contract
+  between agent and frontend (`/api/metrics` field names); both the unit tests
+  and the smoke test enforce it, so a rename on one side fails on the other.
 - The agent accepts `HWMON_ROOT` (test-only) to redirect `/proc` and `/sys`
-  reads into a fake directory tree — this is how the unit tests run without
-  touching real hardware.
+  reads into a fake directory tree — see `tests/conftest.py`. This is how the
+  suite runs without touching real hardware.
+- Tests are pytest-style; `tests/test_packaging.py` also asserts that the wheel
+  contains the dashboard and that the lock file is current.
 
 ## Known limitations
 

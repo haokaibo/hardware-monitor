@@ -31,6 +31,21 @@ does not protect the dashboard itself.
 5. Keep `.env` out of version control. It is gitignored; verify with
    `git check-ignore -v .env`.
 
+### Signing keys and licences
+
+Release artefacts are signed with **Ed25519** and verified with
+`hwmon verify` before installation; verification fails closed. The private
+signing key must never be committed, stored in CI secrets that a fork could
+reach, or kept on a machine that runs the agent. `*.pem`, `*.key`, `license.json`
+and `*.sig` are gitignored — verify with `git check-ignore -v <file>`.
+
+Licence files (`licensing/issue.py` → `licensing/verify.py`) are signed with the
+same primitives and bound to a machine identifier. A leaked licence lets someone
+run the pro tier; it does not grant access to the dashboard.
+
+`cryptography` is imported only by `hwmon/release.py` and `licensing/`. The
+collectors and the HTTP server do not depend on it.
+
 ### What the agent can read
 
 The agent runs as root and reads `/proc`, `/sys` and `hwmon` nodes. It exposes

@@ -26,7 +26,8 @@
 | 操作系统 | **Linux**（agent 直接读 `/proc`、`/sys`，不支持 Windows/macOS） |
 | 初始化系统 | **systemd**（agent 以 systemd 服务方式运行） |
 | 显卡 | **仅 AMD**（要求 `vendor == 0x1002`，NVIDIA/Intel/Apple GPU 会被跳过）；CPU 核显温度（coretemp/zenpower）正常显示 |
-| Python | **3.10+**，只用标准库，无需 `pip install`。下限取自受支持的发行版自带版本：Debian 12 → 3.11、Ubuntu 22.04 → 3.10、Ubuntu 24.04 → 3.12。用系统自带 `python3` 即可，无需额外安装。CI 覆盖 3.10 / 3.11 / 3.12 / 3.13 / 3.14 |
+| Python | **3.10+**（由 `requires-python` 约束）。Rocky 8 自带 3.6、Rocky 9 自带 3.9，因此由 `uv` 安装并固定 **3.12**，不需要改动系统 Python。CI 覆盖 3.10 / 3.11 / 3.12 / 3.13 / 3.14 |
+| 运行时依赖 | 仅 `cryptography`（用于发布包与许可证签名），由 `uv.lock` 安装，无需在目标机手工构建 |
 | web 宿主机 | 任何能访问 agent 的机器（Docker 可选） |
 
 > **注意：** 如果你用 NVIDIA 显卡或 Windows，本项目不适合你，请不要为此开 issue。agent 刻意保持最小化，只面向 Linux + AMD。
@@ -41,44 +42,94 @@
 
 ## 快速开始
 
-**1. agent — 在被监控的 Linux 宿主机上**
+全流程由 [`uv`](https://docs.astral.sh/uv/) 管理：它负责安装固定版本的解释器和锁定
+的依赖集合，所以你运行到的版本就是 CI 验证过的版本。
 
 ```bash
-sudo mkdir -p /opt/hwmon && sudo cp app.py /opt/hwmon/
-echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf && sudo modprobe drivetemp   # SATA 盘温度
-sudo cat > /etc/hwmon-agent.env <<EOF
+git clone <repo> && cd hwmon
+uv sync                    # 解释器 + 锁定依赖 + 项目本体
+```
+
+**1. agent —— 在被监控的 Linux 宿主机上**
+
+```bash
+echo "drivetemp" | sudo tee /etc/modules-load.d/drivetemp.conf   # SATA 盘温度
+sudo modprobe drivetemp
+
+# 由 uv 管理解释器，因此 Rocky 8/9 的系统 Python 不会被使用
+curl -LsSf https://astral.sh/uv/install.sh | sh
+sudo mkdir -p /opt/hwmon && sudo git clone <repo> /opt/hwmon
+cd /opt/hwmon && sudo uv sync --frozen --no-dev
+
+sudo install -d -m 0755 /etc/hwmon
+sudo tee /etc/hwmon/agent.env >/dev/null <<EOF
 AGENT_TOKEN=$(openssl rand -hex 16)
-AGENT_LABEL=my-host
-HWMON_VERSION=$(cut -d. -f1,2 VERSION).$(git rev-list --count HEAD)   # 可选：页面展示的版本号（app.py 来源 commit 的 major.minor.build）
+AGENT_LABEL=$(hostname)
 EOF
-sudo cat > /etc/systemd/system/hwmon-agent.service <<'EOF'
+sudo chmod 600 /etc/hwmon/agent.env
+
+sudo tee /etc/systemd/system/hwmon-agent.service >/dev/null <<'EOF'
 [Unit]
 Description=hwmon agent
 After=network-online.target
+
 [Service]
-EnvironmentFile=/etc/hwmon-agent.env
-ExecStart=/usr/bin/python3 /opt/hwmon/app.py agent
+EnvironmentFile=/etc/hwmon/agent.env
+ExecStart=/opt/hwmon/.venv/bin/hwmon agent
 Restart=always
+
 [Install]
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload && sudo systemctl enable --now hwmon-agent
-curl -H "X-Token: $(grep TOKEN /etc/hwmon-agent.env | cut -d= -f2)" localhost:9101/api/metrics
+curl -H "X-Token: $(sudo grep TOKEN /etc/hwmon/agent.env | cut -d= -f2)" localhost:9101/api/metrics
 ```
 
-**2. web — 任何能访问 agent 的机器**
+RHEL 系主机也可以直接装 RPM：它会把 venv 部署到 `/opt/hwmon` 并安装同样的 unit，
+详见 [packaging/hwmonpro.spec](packaging/hwmonpro.spec)。
+
+**2. web —— 任何能访问 agent 的机器**
 
 ```bash
-cp .env.example .env   # 填入 AGENT_URL 与共享的 AGENT_TOKEN
-python3 app.py web     # 浏览器打开 http://<web主机>:8080
+cp .env.example .env      # 填入 AGENT_URL 与共享的 AGENT_TOKEN
+uv run hwmon web          # 浏览器打开 http://<web主机>:8080
 ```
 
-或用 Docker：
+或用 Docker（镜像内部同样用 uv）：
 
 ```bash
-docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-stopped \
-  -e AGENT_URL -e AGENT_TOKEN -e HWMON_VERSION <image>
-# 或: docker compose up -d --build（见 docker-compose.yml）
+docker compose up -d --build
+# RHEL 目标: docker build -f packaging/docker/Dockerfile.rocky9 -t hwmon-web .
+```
+
+**3. 安装前校验发布包**
+
+```bash
+uv run hwmon verify dist/hwmon-1.0.0.tar.gz -k release-public.pem
+```
+
+## 专业版模块
+
+`src/hwmon/pro/` 下的可选模块，导入它们不影响开源版 agent：
+
+| 模块 | 作用 |
+|---|---|
+| `history.py` | SQLite 指标存档，支持区间查询与分桶降采样——趋势可跨天、跨浏览器会话 |
+| `alerts.py` | 阈值告警引擎，带防抖与滞回：在状态**跃迁**时触发，而不是每个采样都报 |
+
+```python
+from hwmon.pro import AlertEngine, HistoryStore
+
+store = HistoryStore("/var/lib/hwmon/history.db")
+engine = AlertEngine(sink=lambda a: print(a.level, a.message))
+engine.evaluate(payload)          # 每来一个 /api/metrics 采样喂一次
+store.record(payload)
+```
+
+许可证使用 Ed25519 签名并绑定机器标识：
+
+```bash
+uv run python licensing/issue.py --key license-private.pem --machine <id> --days 365 --out license.json
 ```
 
 ## 安全
@@ -106,15 +157,20 @@ docker run -d --name hwmon-web --env-file .env -p 8080:8080 --restart unless-sto
 只用标准库，无需安装测试依赖。
 
 ```bash
-# 单元测试（39 个用例：数据契约、agent 采样、HTTP 服务、冒烟脚本）
-python3 -m unittest discover -s tests -v
+uv sync                       # 同时安装开发依赖
+uv run pytest -q              # 158 个用例
+uv lock --check               # uv.lock 过期时失败（CI 门禁）
+uv build                      # 生成 sdist + wheel 到 dist/
 
-# 部署后冒烟测试（对运行中的 web 实例）
-python3 tests/smoke.py http://127.0.0.1:8080 [--token T]
+# 部署后冒烟测试（对运行中的实例）
+uv run python tests/smoke.py http://127.0.0.1:8080 --token T
+uv run python tests/smoke.py http://127.0.0.1:8080 \
+  --expect-index src/hwmon/static/index.html --page-only
 ```
 
-- [`tests/contract.py`](tests/contract.py) 是 agent 与前端之间的数据契约（`/api/metrics` 字段名），单元测试与冒烟测试都会校验，任何一边改名另一边都会挂。
-- agent 支持 `HWMON_ROOT`（仅测试用）：把 `/proc`、`/sys` 读取重定向到假目录树，单元测试因此无需真实硬件即可运行。
+- [`src/hwmon/contract.py`](src/hwmon/contract.py) 是 agent 与前端之间的数据契约（`/api/metrics` 字段名），单元测试与冒烟测试都会校验，任何一边改名另一边都会挂。
+- agent 支持 `HWMON_ROOT`（仅测试用）：把 `/proc`、`/sys` 读取重定向到假目录树，见 `tests/conftest.py`，测试因此无需真实硬件即可运行。
+- 测试为 pytest 风格；`tests/test_packaging.py` 还会断言 wheel 内含仪表盘、且锁文件是最新的。
 
 ## 已知限制
 

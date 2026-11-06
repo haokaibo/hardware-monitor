@@ -1,0 +1,36 @@
+# Rocky Linux 9 build image for the hwmon web client.
+#
+# Rocky 9 ships Python 3.9 — still below the project floor — so this uses the
+# same pinned-interpreter approach as the Rocky 8 image. Keeping both files
+# identical apart from the base image makes the difference obvious.
+#
+# Build from the repository root:
+#   docker build -f packaging/docker/Dockerfile.rocky9 -t hwmon-web:rocky9 .
+FROM rockylinux:9
+
+ENV PYTHON_VERSION=3.12 \
+    UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/hwmon/venv \
+    PATH=/opt/hwmon/venv/bin:$PATH
+
+RUN dnf -y install curl ca-certificates tar gzip \
+ && curl -LsSf https://astral.sh/uv/install.sh | sh \
+ && mv /root/.local/bin/uv /usr/local/bin/uv \
+ && dnf clean all && rm -rf /var/cache/dnf
+
+WORKDIR /src
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-install-project --no-dev
+COPY src ./src
+COPY VERSION README.md LICENSE ./
+RUN uv sync --frozen --no-dev \
+ && useradd --system --no-create-home --uid 997 hwmon
+
+USER hwmon
+ENV PORT=8080 HWMON_MODE=web
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD /opt/hwmon/venv/bin/python -c "import urllib.request as u;u.urlopen('http://127.0.0.1:8080/healthz')"
+CMD ["hwmon", "web"]
