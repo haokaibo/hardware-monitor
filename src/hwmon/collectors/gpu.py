@@ -10,7 +10,7 @@ import os
 import re
 
 from .. import sysfs
-from ..sysfs import expand, glob_abs, num, rd, temps, to_num
+from ..sysfs import glob_abs, num, rd, temps, to_num
 
 AMD_VENDOR = "0x1002"
 
@@ -47,7 +47,7 @@ def pcie(device_dir: str) -> dict:
 
 
 def _first_number(patterns: list[str]) -> int | None:
-    """First truthy integer across the patterns (absolute, ROOT already applied)."""
+    """First truthy integer across the patterns (absolute, root already applied)."""
     for pattern in patterns:
         for path in glob_abs(pattern):
             value = num(path)
@@ -57,24 +57,19 @@ def _first_number(patterns: list[str]) -> int | None:
 
 
 def _hwmon_dirs(card_dir: str) -> list[str]:
-    """hwmon directories belonging to a card, given a ROOT-prefixed card path.
-
-    ``card_dir`` comes from :func:`expand`, which has already applied
-    ``sysfs.ROOT``, so this must not use ``expand`` again.
-    """
+    """hwmon directories belonging to a card, given a root-prefixed card path."""
     return glob_abs(card_dir + "/device/hwmon/hwmon*")
 
 
-def gpus() -> list[dict]:
+def collect(root: str | None = None) -> list[dict]:
     """Every supported AMD GPU, in card order."""
+    base = sysfs.resolve(root)
     found: list[dict] = []
-    for card_dir in expand("/sys/class/drm/card[0-9]*"):
+    for card_dir in sysfs.expand("/sys/class/drm/card[0-9]*", base):
         card = os.path.basename(card_dir)
         if not _CARD.fullmatch(card):
             continue  # skip connector dirs such as card0-DP-1
 
-        # expand() gives ROOT-prefixed paths; work in absolute form throughout so
-        # nothing gets the root applied twice.
         device = card_dir + "/device"
         vram_total = num(device + "/mem_info_vram_total")
         if rd(device + "/vendor") != AMD_VENDOR or not vram_total:
@@ -99,3 +94,7 @@ def gpus() -> list[dict]:
             }
         )
     return found
+
+
+# Backwards-compatible alias: the old no-argument name.
+gpus = collect

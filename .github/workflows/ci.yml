@@ -52,6 +52,67 @@ jobs:
       - name: Run test suite
         run: uv run pytest -q
 
+  linux:
+    name: Linux suite (container, real /proc + /sys)
+    # Runs inside a container so the collectors see a real Linux kernel instead
+    # of the macOS/fake tree. This caught a real bug: docker bind-mounts
+    # /etc/hostname as a file, which /proc/mounts reports like a filesystem, and
+    # the disk collector attributed the whole volume's usage to it.
+    runs-on: ${{ env.RUNNER_OS_IMAGE }}
+    container: python:3.12-slim
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates git
+          rm -rf /var/lib/apt/lists/*
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          mv /root/.local/bin/uv /usr/local/bin/uv
+          uv --version
+      - name: Sync locked dependencies
+        run: uv sync --frozen --all-extras
+      - name: Full test suite on Linux
+        run: uv run pytest -q
+      - name: Collectors produce data from the real kernel
+        # A container has no AMD GPU and no hwmon sensors, but cpu/mem/disk must
+        # return real values rather than raising.
+        run: |
+          set -euo pipefail
+          uv run python -m hwmon.collectors > /tmp/collect.json
+          python - <<'PY'
+          import json
+          payload = json.load(open("/tmp/collect.json"))
+          assert set(payload) == {"cpu", "mem", "gpu", "disk"}, payload.keys()
+          assert payload["mem"]["total"] > 0, "memory collector read nothing"
+          assert payload["cpu"]["threads"] >= 1, "cpu collector counted no threads"
+          import os
+          # docker bind-mounts these as files; they must never appear as
+          # filesystems in the disk collector
+          mounts = [fs["mount"] for d in payload["disk"] for fs in d["fs"]]
+          assert "/etc/hostname" not in mounts, mounts
+          assert "/etc/resolv.conf" not in mounts, mounts
+          print("collectors OK:", {k: (len(v) if isinstance(v, list) else "dict") for k, v in payload.items()})
+          PY
+      - name: SQLite history works on a real filesystem
+        run: |
+          uv run python - <<'PY'
+          import json, tempfile, pathlib
+          from hwmon.pro import HistoryStore
+          from hwmon import contract
+
+          payload = json.load(open("/tmp/collect.json"))
+          payload["ts"] = 1.0
+          with HistoryStore(pathlib.Path(tempfile.mkdtemp()) / "h.db") as store:
+              store.record(payload)
+              row = store.latest().as_dict()
+          problems = contract.check_history_row(row)
+          assert not problems, problems
+          print("history row OK:", row)
+          PY
+
   lock:
     name: lock file is current
     runs-on: ${{ env.RUNNER_OS_IMAGE }}
@@ -66,7 +127,7 @@ jobs:
   build:
     name: docker build + smoke
     runs-on: ${{ env.RUNNER_OS_IMAGE }}
-    needs: [test, lock]
+    needs: [test, linux, lock]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -105,7 +166,7 @@ jobs:
   package:
     name: sdist + wheel
     runs-on: ${{ env.RUNNER_OS_IMAGE }}
-    needs: [test, lock]
+    needs: [test, linux, lock]
     steps:
       - uses: actions/checkout@v7
         with:

@@ -113,6 +113,57 @@ def test_docs_mentioned_in_agent_md_exist():
         assert (REPO / name).exists(), f"{name} referenced but missing"
 
 
+# ---------------------------------------------------------------- freezing
+
+
+def test_freeze_script_passes_the_required_flags():
+    """The collectors are imported dynamically, so a frozen build must be told.
+
+    A binary built without these flags builds cleanly and then dies at runtime
+    with CollectorNotFound on the first collector. The script encodes the fix;
+    this test stops someone from "simplifying" it away.
+    """
+    script = (REPO / "packaging" / "build_exe.py").read_text()
+    assert "--collect-submodules" in script
+    assert "hwmon.collectors" in script
+    assert "--collect-data" in script
+    # and the docstring must keep explaining why
+    assert "CollectorNotFound" in script
+
+
+def test_nuitka_flags_file_matches_the_pyinstaller_flags():
+    flags = (REPO / "packaging" / "nuitka_flags.txt").read_text()
+    assert "--include-package=hwmon.collectors" in flags
+    assert "--include-package-data=hwmon" in flags
+
+
+def test_collectors_are_loaded_dynamically_not_statically():
+    """Guard the design decision rather than the implementation detail.
+
+    If this ever becomes a static import, the packaging story changes and the
+    note in AGENT.md goes stale.
+    """
+    init = (REPO / "src" / "hwmon" / "collectors" / "__init__.py").read_text()
+    assert "importlib.import_module" in init
+    assert "COLLECTORS" in init and "load(" in init
+    # The payload builders must go through load(), not through direct imports.
+    # (Two pure helpers do import their module lazily inside the function for
+    # path resolution; what matters is that collection itself is dynamic.)
+    assert "load(name)(root)" in init
+
+
+def test_every_declared_collector_module_exists():
+    import re
+
+    init = (REPO / "src" / "hwmon" / "collectors" / "__init__.py").read_text()
+    match = re.search(r"COLLECTORS[^=]*= \(([^)]+)\)", init)
+    assert match, "COLLECTORS literal not found"
+    names = re.findall(r'"([a-z]+)"', match.group(1))
+    assert names, "COLLECTORS is empty"
+    for name in names:
+        assert (REPO / "src" / "hwmon" / "collectors" / f"{name}.py").is_file(), f"missing {name}.py"
+
+
 def _find_uv() -> str | None:
     import shutil
 

@@ -31,18 +31,19 @@ _HWMON_LAYOUTS = (
 )
 
 
-def parents(name: str, depth: int = 0) -> list[str]:
+def parents(name: str, depth: int = 0, root: str | None = None) -> list[str]:
     """Resolve dm/LVM/partition names down to the physical drive name.
 
     Returns an empty list when the node does not exist, so callers can ignore
-    unknown devices instead of raising.
+    unknown devices instead of raising. ``depth`` guards against cyclic slaves
+    links; ``root`` defaults to ``sysfs.ROOT``.
     """
-    base = sysfs.ROOT + "/sys/class/block/" + name
+    base = sysfs.resolve(root) + "/sys/class/block/" + name
     if depth > 5 or not os.path.isdir(base):
         return []
     slaves = os.listdir(base + "/slaves") if os.path.isdir(base + "/slaves") else []
     if slaves:
-        return [x for s in slaves for x in parents(s, depth + 1)]
+        return [x for s in slaves for x in parents(s, depth + 1, root)]
     if os.path.exists(base + "/partition"):
         return [os.path.basename(os.path.dirname(os.path.realpath(base)))]
     return [name]
@@ -54,9 +55,9 @@ def _kind(name: str, rotational: str | None) -> str:
     return "HDD" if rotational == "1" else "SSD"
 
 
-def _drives() -> dict[str, dict]:
+def _drives(root: str) -> dict[str, dict]:
     """Physical drives keyed by kernel name, with no filesystem information yet."""
-    block_dir = sysfs.ROOT + "/sys/block"
+    block_dir = root + "/sys/block"
     names = sorted(os.listdir(block_dir)) if os.path.isdir(block_dir) else []
 
     found: dict[str, dict] = {}
@@ -66,7 +67,7 @@ def _drives() -> dict[str, dict]:
         base = block_dir + "/" + name
         readings: dict[str, float] = {}
         for layout in _HWMON_LAYOUTS:
-            readings.update(temps(sysfs.expand(layout.format(name=name))))
+            readings.update(temps(sysfs.expand(layout.format(name=name), root)))
         found[name] = {
             "name": name,
             "kind": _kind(name, rd(base + "/queue/rotational")),
@@ -79,15 +80,21 @@ def _drives() -> dict[str, dict]:
     return found
 
 
-def _filesystems() -> list[tuple[str, dict]]:
+def _filesystems(root: str) -> list[tuple[str, dict]]:
     """(real device path, filesystem entry) for every mountable /dev/ entry."""
     out: list[tuple[str, dict]] = []
-    for line in (read_text(sysfs.ROOT + "/proc/mounts") or "").splitlines():
+    for line in (read_text(root + "/proc/mounts") or "").splitlines():
         parts = line.split()
         if len(parts) < 3:
             continue
         device, mount, fstype = parts[:3]
         if not device.startswith("/dev/") or fstype in _SKIP_FS:
+            continue
+        # A bind-mounted *file* (docker injects /etc/hostname, /etc/resolv.conf
+        # this way) appears in /proc/mounts like a filesystem and statvfs happily
+        # returns the backing device's numbers. Reporting those would attribute
+        # the whole volume's usage to a 30-byte file, so only directories count.
+        if not os.path.isdir(mount):
             continue
         try:
             st = os.statvfs(mount)
@@ -110,17 +117,25 @@ def _filesystems() -> list[tuple[str, dict]]:
     return out
 
 
-def disks() -> list[dict]:
-    """Physical drives, each carrying the filesystems mounted from it."""
-    found = _drives()
+def collect(root: str | None = None) -> list[dict]:
+    """Physical drives, each carrying the filesystems mounted from it.
+
+    ``root`` defaults to ``sysfs.ROOT`` (the ``HWMON_ROOT`` override).
+    """
+    base = sysfs.resolve(root)
+    found = _drives(base)
 
     seen: set[str] = set()
-    for real, entry in _filesystems():
+    for real, entry in _filesystems(base):
         if real in seen:
             continue  # the same device mounted twice (bind mounts) counts once
         seen.add(real)
-        for drive in set(parents(os.path.basename(real))):
+        for drive in set(parents(os.path.basename(real), root=base)):
             if drive in found:
                 found[drive]["fs"].append(entry)
 
     return list(found.values())
+
+
+# Backwards-compatible alias: the old no-argument name.
+disks = collect

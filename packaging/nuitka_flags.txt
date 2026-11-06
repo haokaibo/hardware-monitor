@@ -1,0 +1,14 @@
+# Nuitka flags for the collector CLI, kept next to the PyInstaller script so the
+# reason for each line is in one place.
+#
+# The collectors are imported dynamically (importlib) so the frozen build needs
+# an explicit include: without --include-package, the binary builds cleanly and
+# then dies at runtime with ModuleNotFoundError on hwmon.collectors.<name>.
+#
+#   python -m nuitka --standalone --onefile \
+#       --include-package=hwmon.collectors \
+#       --include-package-data=hwmon \
+#       src/hwmon/cli.py
+#
+--include-package=hwmon.collectors
+--include-package-data=hwmon

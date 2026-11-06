@@ -21,7 +21,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
-LEVELS = ("ok", "warning", "critical")
+from .. import contract
+
+# Levels come from the contract so a UI keying on them cannot drift.
+LEVELS = tuple(contract.ALERT_LEVELS)
 
 
 @dataclass(frozen=True)
@@ -60,7 +63,8 @@ class Alert:
     message: str
 
     def as_dict(self) -> dict:
-        return {"rule": self.rule, "level": self.level, "value": self.value, "ts": self.ts, "message": self.message}
+        """Mapping whose keys match ``contract.ALERT``."""
+        return {name: getattr(self, name) for name in contract.ALERT}
 
 
 def _lookup(payload: dict, path: str):
@@ -195,4 +199,9 @@ class AlertEngine:
         return f"{rule.name} is {shown}, {verb} the {level} limit of {limit:g}{unit}"
 
     def active_alerts(self) -> list[dict]:
-        return [a.as_dict() for a in self.active.values()]
+        alerts = [a.as_dict() for a in self.active.values()]
+        for payload in alerts:  # fail loudly rather than emit a malformed alert
+            problems = contract.check_alert(payload)
+            if problems:
+                raise ValueError(f"alert violates the contract: {problems}")
+        return alerts

@@ -15,7 +15,18 @@ import os
 import re
 
 # Test-only: redirect /proc and /sys reads into a fake tree. Empty in production.
+# Collectors take an explicit ``root`` argument; when it is omitted they fall
+# back to this value, so `HWMON_ROOT=/fake/tree hwmon verify` and the test
+# fixture keep working without threading a parameter through every call.
 ROOT = os.environ.get("HWMON_ROOT", "")
+
+
+def resolve(root: str | None = None) -> str:
+    """Pick the tree to read: the explicit argument, else ``ROOT``.
+
+    An empty string means "real /proc and /sys".
+    """
+    return ROOT if root is None else root
 
 
 def read_text(path: str) -> str | None:
@@ -64,12 +75,12 @@ def temps(dirs: list[str]) -> dict[str, float]:
     return out
 
 
-def expand(pattern: str) -> list[str]:
-    """Glob a sysfs-style absolute path with ``HWMON_ROOT`` applied.
+def expand(pattern: str, root: str | None = None) -> list[str]:
+    """Glob a sysfs-style absolute path with the resolved root applied.
 
-    Returns ROOT-prefixed absolute paths, already sorted.
+    Returns root-prefixed absolute paths, already sorted.
     """
-    return sorted(glob.glob(ROOT + pattern))
+    return sorted(glob.glob(resolve(root) + pattern))
 
 
 def glob_abs(pattern: str) -> list[str]:

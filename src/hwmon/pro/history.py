@@ -21,18 +21,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS samples (
-    ts        REAL PRIMARY KEY,
-    cpu_pct   REAL,
-    cpu_temp  REAL,
-    mem_pct   REAL,
-    gpu_pct   REAL,
-    gpu_temp  REAL,
-    gpu_vram  REAL
-);
-CREATE INDEX IF NOT EXISTS samples_ts ON samples (ts);
-"""
+from .. import contract
+
+# The stored columns come from the shared contract, so adding a metric in one
+# place updates the DDL, the row dataclass and the readers together.
+COLUMNS = list(contract.HISTORY)
+
+_DDL_TYPES = {name: ("REAL PRIMARY KEY" if name == "ts" else "REAL") for name in COLUMNS}
+SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS samples (\n"
+    + ",\n".join(f"    {name} {_DDL_TYPES[name]}" for name in COLUMNS)
+    + "\n);\n"
+    + "CREATE INDEX IF NOT EXISTS samples_ts ON samples (ts);\n"
+)
+
+# Fails at import if the contract and this module disagree about the shape.
+assert COLUMNS[0] == "ts", "ts must be the first history column"
+assert len(COLUMNS) == len(set(COLUMNS)), "duplicate column in contract.HISTORY"
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,13 @@ class SampleRow:
     gpu_pct: float | None
     gpu_temp: float | None
     gpu_vram: float | None
+
+    def as_dict(self) -> dict:
+        """Plain mapping whose keys match ``contract.HISTORY``."""
+        return {name: getattr(self, name) for name in COLUMNS}
+
+    def as_tuple(self) -> tuple:
+        return tuple(getattr(self, name) for name in COLUMNS)
 
     @classmethod
     def from_payload(cls, payload: dict) -> "SampleRow":
@@ -97,12 +109,16 @@ class HistoryStore:
     # -- writes ----------------------------------------------------------
 
     def record(self, payload: dict) -> None:
-        """Store one sample. Duplicate timestamps are ignored, not an error."""
+        """Store one sample. Duplicate timestamps are replaced, not an error."""
         row = SampleRow.from_payload(payload)
+        problems = contract.check_history_row(row.as_dict())
+        if problems:  # a shape mismatch is a programming error, not a data error
+            raise ValueError(f"history row violates the contract: {problems}")
+        placeholders = ",".join("?" * len(COLUMNS))
         with self._lock:
             self._conn.execute(
-                "INSERT OR REPLACE INTO samples VALUES (?,?,?,?,?,?,?)",
-                (row.ts, row.cpu_pct, row.cpu_temp, row.mem_pct, row.gpu_pct, row.gpu_temp, row.gpu_vram),
+                f"INSERT OR REPLACE INTO samples ({','.join(COLUMNS)}) VALUES ({placeholders})",
+                row.as_tuple(),
             )
             self._conn.commit()
 
@@ -131,8 +147,7 @@ class HistoryStore:
     def range(self, start: float, end: float) -> list[SampleRow]:
         with self._lock:
             rows: Iterable[tuple] = self._conn.execute(
-                "SELECT ts, cpu_pct, cpu_temp, mem_pct, gpu_pct, gpu_temp, gpu_vram "
-                "FROM samples WHERE ts BETWEEN ? AND ? ORDER BY ts",
+                f"SELECT {','.join(COLUMNS)} FROM samples WHERE ts BETWEEN ? AND ? ORDER BY ts",
                 (start, end),
             ).fetchall()
         return [SampleRow(*r) for r in rows]
@@ -140,8 +155,7 @@ class HistoryStore:
     def latest(self) -> SampleRow | None:
         with self._lock:
             row = self._conn.execute(
-                "SELECT ts, cpu_pct, cpu_temp, mem_pct, gpu_pct, gpu_temp, gpu_vram "
-                "FROM samples ORDER BY ts DESC LIMIT 1"
+                f"SELECT {','.join(COLUMNS)} FROM samples ORDER BY ts DESC LIMIT 1"
             ).fetchone()
         return SampleRow(*row) if row else None
 

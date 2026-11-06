@@ -7,12 +7,16 @@ import json
 import pytest
 
 from hwmon import contract
+from hwmon.collectors.cpu import collect as cpu
+from hwmon.collectors.disk import collect as disks
+from hwmon.collectors.gpu import collect as gpus
+from hwmon.collectors.mem import collect as mem
 from hwmon.sampler import DISK_EVERY, Sampler
 
 
 @pytest.fixture
 def sampler(fake_host):
-    return Sampler(label="host-a", version="1.2.3")
+    return Sampler(label="host-a", version="1.2.3", cpu=cpu, mem=mem, gpus=gpus, disks=disks)
 
 
 def test_sample_matches_contract_and_is_json(sampler):

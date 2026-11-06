@@ -9,7 +9,7 @@ from ..sysfs import read_text
 SCALE = 1024
 
 
-def mem() -> dict:
+def collect(root: str | None = None) -> dict:
     """Memory and swap in bytes.
 
     Raises ``KeyError`` when a required field is missing; the sampler treats that
@@ -17,7 +17,7 @@ def mem() -> dict:
     """
     fields = {
         line.split(":")[0]: int(line.split()[1]) * SCALE
-        for line in (read_text(sysfs.ROOT + "/proc/meminfo") or "").splitlines()
+        for line in (read_text(sysfs.resolve(root) + "/proc/meminfo") or "").splitlines()
     }
     return {
         "total": fields["MemTotal"],
@@ -26,3 +26,7 @@ def mem() -> dict:
         "swap_total": fields["SwapTotal"],
         "swap_used": fields["SwapTotal"] - fields["SwapFree"],
     }
+
+
+# Backwards-compatible alias: the old no-argument name.
+mem = collect

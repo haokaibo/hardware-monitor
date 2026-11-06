@@ -16,13 +16,28 @@ from . import collectors
 # Disks are read every Nth tick to avoid waking spinning drives every second.
 DISK_EVERY = 10
 
+# Submodule names, not attributes of the package: `importlib` binds
+# `hwmon.collectors.cpu` to the *module*, so the callables must be resolved
+# through load() at construction time rather than referenced as package names.
+DEFAULT_COLLECTORS = {
+    "cpu": "cpu",
+    "mem": "mem",
+    "gpus": "gpu",
+    "disks": "disk",
+}
+
 
 class Sampler:
     """Owns the metrics state and the background thread that refreshes it."""
 
     def __init__(self, label: str, version: str, interval: float = 1.0,
-                 cpu=collectors.cpu, mem=collectors.mem,
-                 gpus=collectors.gpus, disks=collectors.disks) -> None:
+                 cpu=None, mem=None, gpus=None, disks=None) -> None:
+        # None means "use the loader", which keeps the dynamic import as the one
+        # code path and lets tests inject fakes.
+        cpu = cpu or collectors.load(DEFAULT_COLLECTORS["cpu"])
+        mem = mem or collectors.load(DEFAULT_COLLECTORS["mem"])
+        gpus = gpus or collectors.load(DEFAULT_COLLECTORS["gpus"])
+        disks = disks or collectors.load(DEFAULT_COLLECTORS["disks"])
         self.state: dict = {}
         self._label = label
         self._version = version

@@ -7,9 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from hwmon import collectors
-from hwmon.collectors import cpu, disks, gpus, mem, parents, pcie
-from hwmon.collectors.gpu import pcie_generation
+from hwmon.collectors import parent_drives as parents
+from hwmon.collectors.gpu import collect as gpus, pcie, pcie_generation
+from hwmon.collectors.cpu import collect as cpu
+from hwmon.collectors.disk import collect as disks
+from hwmon.collectors.mem import collect as mem
 from hwmon.sysfs import temps, to_num
 
 from conftest import STAT1, STAT2, w
@@ -147,6 +149,24 @@ def test_disks(fake_host):
     assert f["fstype"] == "ext4"
     assert f["total"] > 0
     assert f["total"] >= f["used"]
+
+
+def test_bind_mounted_file_is_not_reported_as_a_filesystem(fake_host):
+    """Docker bind-mounts /etc/hostname, which shows up in /proc/mounts as a
+    device mount. statvfs succeeds on it and returns the backing volume's
+    numbers, so it must be filtered out or the whole volume's usage gets
+    attributed to a single file. Found by running the suite in a container.
+    """
+    a_file = fake_host.path("/proc/hostname-file")
+    a_file.write_text("container-host")
+    fake_host.write(
+        "/proc/mounts",
+        f"/dev/nvme0n1p1 {a_file} ext4 rw 0 0\n"
+        f"/dev/nvme0n1p1 {fake_host.mnt}/boot ext4 rw 0 0\n",
+    )
+    mounts = [f["mount"] for d in disks() for f in d["fs"]]
+    assert str(a_file) not in mounts
+    assert f"{fake_host.mnt}/boot" in mounts
 
 
 def test_collectors_skip_when_block_dir_missing(fake_host):

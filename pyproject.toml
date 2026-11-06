@@ -35,7 +35,9 @@ hwmon = "hwmon.cli:main"
 [project.optional-dependencies]
 # Kept separate from the default install: neither tool is needed to run the
 # monitor, only to produce a distributable artefact.
-build = ["pyinstaller>=6.10"]
+build = [
+    "pyinstaller>=6.10",
+]
 
 [dependency-groups]
 dev = [

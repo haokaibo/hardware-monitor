@@ -67,7 +67,7 @@ src/hwmon/
     disk.py          /sys/block + /proc/mounts, LVM folded onto physical drives
   sampler.py         the 1 Hz loop and the ts invariant
   server.py          the HTTP handler for both roles
-  contract.py        /api/metrics field contract (shared with tests + smoke)
+  contract.py        three contracts: /api/metrics, HISTORY, ALERT
   release.py         Ed25519 signing/verification of release artefacts
   pro/
     history.py       SQLite downsample store
@@ -105,16 +105,28 @@ common bug when adding a collector — tests will catch it, production will not.
 `static/index.html` to produce the English message. Changing one without the
 other breaks the EN locale; `tests/test_server.py` asserts they agree.
 
-### The data contract
+### The data contracts
 
-`hwmon/contract.py` lists every field `/api/metrics` must carry and the tests +
-smoke script enforce it.
+`hwmon/contract.py` holds three lists that are each enforced by tests, because
+they all fail the same way — a field renamed on one side only:
+
+| List | Promise | Enforced by |
+|---|---|---|
+| `TOP` / `CPU` / `MEM` / `GPU` / `PCIE` / `DISK` / `FS` | fields `/api/metrics` carries | `check_payload`, used by the unit tests **and** the smoke script |
+| `HISTORY` | SQLite columns in `pro/history.py` | the DDL is *generated* from it; `PRAGMA table_info` must match |
+| `ALERT` | keys in `pro/alerts.Alert.as_dict` | `check_alert`, called before an alert leaves the engine |
+
+`ALERT_LEVELS` is likewise the single source for the levels the engine may emit.
+
+Do not hardcode a column list or dict literal in `pro/`; derive it from the
+contract (`COLUMNS`, `{name: getattr(self, name) for name in contract.ALERT}`)
+so the two cannot drift.
 
 ## Workflow
 
 ```bash
 uv sync                      # install locked deps + the project
-uv run pytest -q             # full suite (158 tests)
+uv run pytest -q             # full suite (199 tests)
 uv run hwmon agent           # run the agent from source
 uv run hwmon web             # run the dashboard from source
 uv build                     # sdist + wheel into dist/
@@ -132,6 +144,8 @@ uv run python tests/smoke.py http://127.0.0.1:8080 \
 
 1. Add the field in the relevant `collectors/*.py`.
 2. Add it to `hwmon/contract.py` (`CPU`, `MEM`, `GPU`, `DISK`, `FS`, `PCIE`, `TOP`).
+   For a pro-tier field, extend `HISTORY` or `ALERT` instead — the schema and the
+   output dicts are generated from those lists.
 3. Add a value to `tests/fixtures/sample_metrics.json`.
 4. Read it in `static/index.html`.
 5. Add a test in `tests/test_collectors.py` using the `fake_host` fixture.

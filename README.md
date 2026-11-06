@@ -227,7 +227,7 @@ GitHub repository, and each side runs its own CI. They do not interfere:
 | Remote | Workflow | What it does |
 |---|---|---|
 | `gitea` (private, intranet) | [`.gitea/workflows/deploy.yaml`](.gitea/workflows/deploy.yaml) | Self-hosted runner on the Docker host: build, deploy, health-check |
-| `origin` (GitHub) | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | GitHub-hosted runner: unit tests, `docker build`, boot + page smoke test |
+| `origin` (GitHub) | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | GitHub-hosted runner: unit tests on 5 Pythons, a **Linux container job** (real `/proc` + `/sys`), lock check, `docker build` + page smoke, sdist/wheel |
 
 The key property is that **each platform only reads its own directory**:
 Gitea looks at `.gitea/workflows/`, GitHub at `.github/workflows/`. A push to

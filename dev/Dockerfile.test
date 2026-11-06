@@ -1,0 +1,38 @@
+# Linux test environment for hwmon.
+#
+# Why: the collectors read /proc and /sys, and the interesting branches
+# (AMD GPU via drm, NVMe/SATA hwmon, LVM folding) only exist on Linux. This
+# image lets you run the full suite and the collector CLI against a real kernel
+# instead of the fake tree, on any host.
+#
+#   docker build -f dev/Dockerfile.test -t hwmon-test .
+#   docker run --rm hwmon-test                      # full suite
+#   docker run --rm hwmon-test uv run python -m hwmon.collectors
+#   docker run --rm --privileged --pid=host hwmon-test \
+#     uv run python -m hwmon.collectors               # real host sensors
+FROM python:3.12-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -LsSf https://astral.sh/uv/install.sh | sh \
+ && mv /root/.local/bin/uv /usr/local/bin/uv
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/hwmon/venv \
+    PATH=/opt/hwmon/venv/bin:$PATH
+
+WORKDIR /src
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-install-project --all-extras
+COPY src ./src
+COPY tests ./tests
+COPY licensing ./licensing
+COPY packaging ./packaging
+COPY docs ./docs
+COPY VERSION README.md README.zh-CN.md LICENSE AGENT.md SECURITY.md ./
+RUN uv sync --frozen --all-extras
+
+# The fake-host tests do not need privileges; only real-sensor runs do.
+CMD ["uv", "run", "pytest", "-q"]
