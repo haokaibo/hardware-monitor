@@ -1,5 +1,5 @@
-<svg width="100%" viewBox="0 0 900 700" role="img" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff" aria-label="hwmon runtime and delivery architecture">
-  <title>hwmon runtime and delivery architecture</title>
+<svg width="100%" viewBox="0 0 900 470" role="img" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff" aria-label="hwmon runtime architecture">
+  <title>hwmon runtime architecture</title>
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="#6b6b6b"/>
@@ -18,61 +18,48 @@
     </style>
   </defs>
 
-  <!-- ==================== RUNTIME ==================== -->
-  <text class="t h" x="30" y="34">1 · Runtime architecture</text>
+  <text class="t h" x="30" y="34">Runtime architecture</text>
   <text class="t sub" x="30" y="52">what runs after install · no database, no web framework · Linux + AMD only</text>
-
+  <!-- ==================== RUNTIME ==================== -->
   <!-- monitored host -->
   <rect class="box" x="30" y="72" width="250" height="228"/>
   <text class="t lbl" x="46" y="94">Monitored host</text>
   <text class="t sub" x="46" y="110">systemd · root · agent role</text>
-
   <rect class="box2" x="46" y="122" width="218" height="46"/>
   <text class="t mono" x="58" y="141">/proc  /sys  hwmon</text>
   <text class="t sub" x="58" y="157">stat · cpuinfo · meminfo · mounts</text>
-
   <rect class="box2" x="46" y="178" width="218" height="46"/>
   <text class="t lbl" x="58" y="196">collectors/</text>
   <text class="t mono" x="58" y="212">cpu mem gpu disk</text>
-
   <rect class="box2" x="46" y="234" width="218" height="50"/>
   <text class="t lbl" x="58" y="252">sampler</text>
   <text class="t sub" x="58" y="267">1 Hz · ts advances only on success</text>
-
   <path class="flow" d="M155 168 L155 176"/>
   <path class="flow" d="M155 224 L155 232"/>
-
   <!-- wire -->
   <path class="flow" d="M280 259 L360 259"/>
   <text class="t mono" x="292" y="250">HTTP :9101</text>
   <text class="t sub" x="292" y="275">X-Token</text>
-
   <!-- web host / container -->
   <rect class="box" x="360" y="72" width="250" height="228"/>
   <text class="t lbl" x="376" y="94">Web client</text>
   <text class="t sub" x="376" y="110">container · unprivileged user · web role</text>
-
   <rect class="box2" x="376" y="120" width="218" height="52"/>
   <text class="t lbl" x="388" y="140">server.py</text>
   <text class="t mono" x="388" y="153">/  /healthz</text>
   <text class="t mono" x="388" y="166">/api/info  /api/metrics</text>
-
   <rect class="box2" x="376" y="178" width="218" height="52"/>
   <text class="t lbl" x="388" y="196">proxy</text>
   <text class="t sub" x="388" y="211">forwards /api/metrics</text>
   <text class="t sub" x="388" y="224">502 when the agent is down</text>
-
   <rect class="box2" x="376" y="238" width="218" height="50"/>
   <text class="t lbl" x="388" y="256">static/</text>
   <text class="t sub" x="388" y="271">index.html · no build step · EN / ZH</text>
-
   <path class="flow" d="M485 172 L485 176"/>
   <path class="flow" d="M485 230 L485 236"/>
-
   <!-- browser -->
   <path class="flow" d="M610 259 L690 259"/>
   <text class="t mono" x="614" y="250">HTTP :8080</text>
-
   <rect class="box" x="690" y="72" width="180" height="228"/>
   <text class="t lbl" x="706" y="94">Browser</text>
   <text class="t sub" x="706" y="110">never talks to the agent</text>
@@ -82,90 +69,20 @@
   <rect class="box2" x="706" y="178" width="148" height="46"/>
   <text class="t sub" x="718" y="197">staleness from ts</text>
   <text class="t sub" x="718" y="213">thresholds in page</text>
-
   <!-- pro tier -->
   <rect class="warm" x="30" y="318" width="840" height="118"/>
   <text class="t lbl" x="46" y="340">Pro tier · src/hwmon/pro/ · optional, compiled in packaged builds</text>
   <text class="t sub" x="46" y="356">the open tiers above never import it; the runtime does not need it either</text>
-
   <rect class="box2" x="46" y="368" width="270" height="54"/>
   <text class="t lbl" x="60" y="386">history.py</text>
   <text class="t sub" x="60" y="401">SQLite · range queries</text>
   <text class="t sub" x="60" y="415">bucketed downsampling</text>
-
   <rect class="box2" x="330" y="368" width="270" height="54"/>
   <text class="t lbl" x="344" y="386">alerts.py</text>
   <text class="t sub" x="344" y="401">threshold rules · debounce</text>
   <text class="t sub" x="344" y="415">fires on transition, not per sample</text>
-
   <rect class="box2" x="614" y="368" width="240" height="54"/>
   <text class="t lbl" x="628" y="386">contract.py</text>
   <text class="t sub" x="628" y="401">HISTORY + ALERT fields</text>
   <text class="t sub" x="628" y="415">shared with the tests</text>
-
-  <!-- ==================== DELIVERY ==================== -->
-  <!-- Two independent paths from the same source. They never trigger each
-       other: each platform reads only its own workflow directory. GitHub proves
-       the tree builds; Gitea is the only thing that delivers. -->
-  <line class="rule" x1="30" y1="480" x2="870" y2="480"/>
-
-  <text class="t h" x="30" y="508">2 · Delivery and distribution</text>
-  <text class="t sub" x="30" y="530">uv manages dependencies and the interpreter · one source, two parallel paths</text>
-
-  <!-- source, shared by both paths -->
-  <rect class="box" x="30" y="558" width="150" height="128"/>
-  <text class="t lbl" x="44" y="578">Source</text>
-  <text class="t mono" x="44" y="595">pyproject.toml</text>
-  <text class="t mono" x="44" y="609">uv.lock</text>
-  <text class="t mono" x="44" y="623">.python-version</text>
-  <text class="t mono" x="44" y="637">src/hwmon/</text>
-  <text class="t sub" x="44" y="658">both remotes receive</text>
-  <text class="t sub" x="44" y="672">every push</text>
-
-  <!-- fork: one arrow up, one arrow down -->
-  <path class="flow" d="M180 606 L212 606 L212 574 L246 574"/>
-  <path class="flow" d="M180 638 L212 638 L212 674 L246 674"/>
-
-  <!-- ===== path A: GitHub (verification only) ===== -->
-  <rect class="box2" x="246" y="540" width="188" height="68"/>
-  <text class="t lbl" x="260" y="559">GitHub · hosted runners</text>
-  <text class="t sub" x="260" y="575">5 Pythons 3.10–3.13</text>
-  <text class="t sub" x="260" y="589">Linux job · docs · docker build</text>
-  <text class="t sub" x="260" y="603">sdist + wheel</text>
-
-  <path class="flow" d="M434 574 L466 574"/>
-
-  <rect class="box2" x="466" y="540" width="188" height="68"/>
-  <text class="t lbl" x="480" y="559">Verification only</text>
-  <text class="t sub" x="480" y="575">proves the tree builds and boots</text>
-  <text class="t sub" x="480" y="589">no deploy step exists</text>
-  <text class="t sub" x="480" y="603">artefacts are CI evidence</text>
-
-  <!-- ===== path B: Gitea (the only deliverer) ===== -->
-  <rect class="box2" x="246" y="644" width="188" height="68"/>
-  <text class="t lbl" x="260" y="663">Gitea · intranet</text>
-  <text class="t sub" x="260" y="679">self-hosted runner</text>
-  <text class="t sub" x="260" y="693">docker compose up -d --build</text>
-  <text class="t sub" x="260" y="707">health check · rolls container</text>
-
-  <path class="flow" d="M434 678 L466 678"/>
-
-  <rect class="box2" x="466" y="644" width="188" height="68"/>
-  <text class="t lbl" x="480" y="663">Built on the Docker host</text>
-  <text class="t sub" x="480" y="679">image · pro/*.so at build time</text>
-  <text class="t sub" x="480" y="693">offline bundle for air gaps</text>
-  <text class="t sub" x="480" y="707">signed, then verified</text>
-
-  <path class="flow" d="M654 678 L686 678"/>
-
-  <rect class="warm" x="686" y="644" width="184" height="68"/>
-  <text class="t lbl" x="700" y="663">Target host</text>
-  <text class="t sub" x="700" y="679">RPM, or</text>
-  <text class="t mono" x="700" y="694">hwmon-setup --offline</text>
-  <text class="t sub" x="700" y="707">then verify the signature</text>
-
-  <!-- explicit "these do not connect" note -->
-  <text class="t sub" x="466" y="630">↑ independent: neither can trigger the other</text>
-
-  <text class="t sub" x="30" y="734">Integrity: SBOM (syft) + SHA256SUMS + Ed25519 signatures · verification fails closed · packaging/ holds every build path</text>
 </svg>

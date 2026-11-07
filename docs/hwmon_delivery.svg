@@ -1,0 +1,72 @@
+<svg width="100%" viewBox="0 0 900 330" role="img" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff" aria-label="hwmon delivery and distribution">
+  <title>hwmon delivery and distribution</title>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6b6b6b"/>
+    </marker>
+    <style>
+      .t   { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .h   { font-size: 15px; font-weight: 600; fill: #1a1a1a; }
+      .sub { font-size: 11px; fill: #6b6b6b; }
+      .lbl { font-size: 11.5px; font-weight: 600; fill: #1a1a1a; }
+      .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; fill: #4a4a4a; }
+      .box { fill: #fafafa; stroke: #d4d4d4; stroke-width: 1; rx: 8; }
+      .box2{ fill: #f0f0f0; stroke: #c4c4c4; stroke-width: 1; rx: 8; }
+      .warm{ fill: #fdf6ec; stroke: #e3c08a; stroke-width: 1; rx: 8; }
+      .flow{ stroke: #6b6b6b; stroke-width: 1.2; fill: none; marker-end: url(#ah); }
+      .rule{ stroke: #e6e6e6; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <text class="t h" x="30" y="34">Delivery and distribution</text>
+  <text class="t sub" x="30" y="52">uv manages dependencies and the interpreter · one source, two parallel paths</text>
+
+  <!-- Two independent paths from the same source. They never trigger each
+       other: each platform reads only its own workflow directory. GitHub proves
+       the tree builds; Gitea is the only thing that delivers. -->
+  <!-- source, shared by both paths -->
+  <rect class="box" x="30" y="118" width="150" height="128"/>
+  <text class="t lbl" x="44" y="138">Source</text>
+  <text class="t mono" x="44" y="155">pyproject.toml</text>
+  <text class="t mono" x="44" y="169">uv.lock</text>
+  <text class="t mono" x="44" y="183">.python-version</text>
+  <text class="t mono" x="44" y="197">src/hwmon/</text>
+  <text class="t sub" x="44" y="218">both remotes receive</text>
+  <text class="t sub" x="44" y="232">every push</text>
+  <!-- fork: one arrow up, one arrow down -->
+  <path class="flow" d="M180 166 L212 166 L212 134 L246 134"/>
+  <path class="flow" d="M180 198 L212 198 L212 234 L246 234"/>
+  <!-- ===== path A: GitHub (verification only) ===== -->
+  <rect class="box2" x="246" y="100" width="188" height="68"/>
+  <text class="t lbl" x="260" y="119">GitHub · hosted runners</text>
+  <text class="t sub" x="260" y="135">5 Pythons 3.10–3.13</text>
+  <text class="t sub" x="260" y="149">Linux job · docs · docker build</text>
+  <text class="t sub" x="260" y="163">sdist + wheel</text>
+  <path class="flow" d="M434 134 L466 134"/>
+  <rect class="box2" x="466" y="100" width="188" height="68"/>
+  <text class="t lbl" x="480" y="119">Verification only</text>
+  <text class="t sub" x="480" y="135">proves the tree builds and boots</text>
+  <text class="t sub" x="480" y="149">no deploy step exists</text>
+  <text class="t sub" x="480" y="163">artefacts are CI evidence</text>
+  <!-- ===== path B: Gitea (the only deliverer) ===== -->
+  <rect class="box2" x="246" y="204" width="188" height="68"/>
+  <text class="t lbl" x="260" y="223">Gitea · intranet</text>
+  <text class="t sub" x="260" y="239">self-hosted runner</text>
+  <text class="t sub" x="260" y="253">docker compose up -d --build</text>
+  <text class="t sub" x="260" y="267">health check · rolls container</text>
+  <path class="flow" d="M434 238 L466 238"/>
+  <rect class="box2" x="466" y="204" width="188" height="68"/>
+  <text class="t lbl" x="480" y="223">Built on the Docker host</text>
+  <text class="t sub" x="480" y="239">image · pro/*.so at build time</text>
+  <text class="t sub" x="480" y="253">offline bundle for air gaps</text>
+  <text class="t sub" x="480" y="267">signed, then verified</text>
+  <path class="flow" d="M654 238 L686 238"/>
+  <rect class="warm" x="686" y="204" width="184" height="68"/>
+  <text class="t lbl" x="700" y="223">Target host</text>
+  <text class="t sub" x="700" y="239">RPM, or</text>
+  <text class="t mono" x="700" y="254">hwmon-setup --offline</text>
+  <text class="t sub" x="700" y="267">then verify the signature</text>
+  <!-- explicit "these do not connect" note -->
+  <text class="t sub" x="466" y="190">↑ independent: neither can trigger the other</text>
+  <text class="t sub" x="30" y="294">Integrity: SBOM (syft) + SHA256SUMS + Ed25519 signatures · verification fails closed · packaging/ holds every build path</text>
+</svg>

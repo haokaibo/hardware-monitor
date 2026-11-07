@@ -590,14 +590,17 @@ def test_readme_languages_list_the_same_files():
 # ---------------------------------------------------------------- design.md
 
 
+DESIGN = REPO / "docs" / "design.md"
+
+
 def test_design_md_embeds_an_svg_that_exists():
     import re
 
-    doc = (REPO / "design.md").read_text()
+    doc = DESIGN.read_text()
     images = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", doc)
     assert images, "design.md embeds no diagram"
     for rel in images:
-        path = REPO / rel
+        path = DESIGN.parent / rel
         assert path.exists(), f"design.md embeds a missing file: {rel}"
         assert path.suffix == ".svg"
         # must be a real drawing, not a placeholder
@@ -612,16 +615,17 @@ def test_design_svg_has_no_embedded_provenance_metadata():
     Those inflate the file, describe the tool rather than the system, and are
     invisible in a browser. The diagram should be readable source.
     """
-    svg = (REPO / "docs" / "hwmon_architecture.svg").read_text()
-    assert "<metadata>" not in svg
-    assert "c2pa" not in svg
-    # and small enough that a reviewer can read the source
-    assert len(svg) < 40_000, "diagram is too large to review as source"
+    for name in ("hwmon_runtime.svg", "hwmon_delivery.svg"):
+        svg = (REPO / "docs" / name).read_text()
+        assert "<metadata>" not in svg, f"{name} carries provenance metadata"
+        assert "c2pa" not in svg, f"{name} carries a C2PA manifest"
+        assert len(svg) < 40_000, f"{name} is too large to review as source"
+
 
 
 def test_design_md_states_the_runtime_and_the_delivery():
     """Both halves the diagram claims to answer must be explained in text."""
-    doc = (REPO / "design.md").read_text()
+    doc = DESIGN.read_text()
     # runtime
     for needle in ("hwmon agent", "hwmon web", "src/hwmon/pro/", "sampler.py"):
         assert needle in doc, f"design.md does not describe {needle}"
@@ -642,7 +646,7 @@ def test_design_svg_shows_the_two_remotes_in_parallel():
     """
     import re
 
-    svg = (REPO / "docs" / "hwmon_architecture.svg").read_text()
+    svg = (REPO / "docs" / "hwmon_delivery.svg").read_text()
 
     # both remotes are present and labelled with their role
     assert "GitHub · hosted runners" in svg
@@ -662,8 +666,7 @@ def test_design_svg_shows_the_two_remotes_in_parallel():
     # single-line drawing implied. Both axis-aligned and diagonal are checked,
     # because the first version of this test only looked at diagonals and let a
     # vertical connector straight through.
-    delivery = svg.split("DELIVERY ====================", 1)[1]
-    paths = re.findall(r'class="flow" d="([^"]+)"', delivery)
+    paths = re.findall(r'class="flow" d="([^"]+)"', svg)
 
     def endpoints(d):
         pts = re.findall(r'[ML]\s*(\d+)\s+(\d+)', d)
@@ -681,5 +684,4 @@ def test_design_svg_shows_the_two_remotes_in_parallel():
         "an arrow spans between the GitHub and Gitea rows: " + str(bridged)
     )
 
-    doc = (REPO / "design.md").read_text()
-    assert "parallel paths" in doc or "One source, two parallel" in doc
+    assert "parallel paths" in DESIGN.read_text() or "One source, two parallel" in DESIGN.read_text()
