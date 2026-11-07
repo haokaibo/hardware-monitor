@@ -2,7 +2,7 @@
 #
 # uv installs the pinned interpreter and the locked dependency set, so the
 # container runs exactly what CI verified rather than whatever the base image
-# happens to ship. Use packaging/docker/Dockerfile.rocky{8,9} for RHEL targets.
+# happens to ship. Use packaging/docker/Dockerfile.web-rocky{8,9} for RHEL targets.
 #
 #   docker build -t hwmon-web .
 FROM python:3.12-slim

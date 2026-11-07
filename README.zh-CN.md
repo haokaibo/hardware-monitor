@@ -99,7 +99,7 @@ uv run hwmon web          # 浏览器打开 http://<web主机>:8080
 
 ```bash
 docker compose up -d --build
-# RHEL 目标: docker build -f packaging/docker/Dockerfile.rocky9 -t hwmon-web .
+# RHEL 目标: docker build -f packaging/docker/Dockerfile.web-rocky9 -t hwmon-web .
 ```
 
 **3. 安装前校验发布包**

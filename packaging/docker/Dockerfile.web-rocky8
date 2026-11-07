@@ -1,4 +1,9 @@
-# Rocky Linux 8 build image for the hwmon web client.
+# RUNTIME image (deploys the service) - not a build image.
+#
+# Produces the hwmon web client on Rocky Linux 8. The result is what you run:
+#   docker run ... hwmon-web:rocky8
+# For the image that compiles Cython extensions instead, see
+# Dockerfile.extbuild-rocky8.
 #
 # Rocky 8 ships Python 3.6, which is below the 3.10 floor. Rather than enabling
 # AppStream modules and hoping the version matches, the build installs a pinned
@@ -6,7 +11,7 @@
 # file are identical to what CI verifies.
 #
 # Build from the repository root:
-#   docker build -f packaging/docker/Dockerfile.rocky8 -t hwmon-web:rocky8 .
+#   docker build -f packaging/docker/Dockerfile.web-rocky8 -t hwmon-web:rocky8 .
 FROM rockylinux:8
 
 ENV PYTHON_VERSION=3.12 \
@@ -16,7 +21,10 @@ ENV PYTHON_VERSION=3.12 \
     UV_PROJECT_ENVIRONMENT=/opt/hwmon/venv \
     PATH=/opt/hwmon/venv/bin:$PATH
 
-RUN dnf -y install curl-minimal ca-certificates tar gzip \
+# Rocky 8 has no curl-minimal package; the full curl is the only option and there
+# is no conflicting pre-installed variant to work around. Rocky 9 is the reverse
+# (see Dockerfile.web-rocky9) - the two names are not interchangeable.
+RUN dnf -y install curl ca-certificates tar gzip \
  && curl -LsSf https://astral.sh/uv/install.sh | sh \
  && install -m 0755 "$(command -v uv || echo "$HOME/.local/bin/uv")" /usr/local/bin/uv \
  && dnf clean all && rm -rf /var/cache/dnf

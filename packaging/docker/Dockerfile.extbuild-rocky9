@@ -1,22 +1,30 @@
-# Rocky 8 build image for the Cython extensions.
+# BUILD image (produces artefacts, does not run the service).
+#
+# Compiles the Cython extensions for the pro tier on Rocky Linux 9 (glibc 2.34).
+# Output is written to /out, not deployed directly:
+#   docker run --rm -v "$PWD/out:/out" hwmon-ext:rocky9
+# For the image that serves the dashboard, see Dockerfile.web-rocky9.
 #
 # Used for the glibc compatibility experiment described in
-# docs/packaging-comparison.md: extensions built here (glibc 2.28) are lifted out
-# and loaded in the Rocky 9 image (glibc 2.34) to show the one-way direction of
-# that compatibility.
+# docs/packaging-comparison.md: this image (glibc 2.34) builds extensions that
+# CANNOT load on Rocky 8 (glibc 2.28). Running both directions is the point of
+# the experiment; the result is recorded there.
 #
-# Rocky 8 ships Python 3.6, which cannot compile the pro modules (they need 3.10+
+# Rocky 9 ships Python 3.9, which cannot compile the pro modules (they need 3.10+
 # for dataclass annotations), so uv installs the pinned interpreter as it does
 # everywhere else.
 #
-#   docker build -f packaging/docker/Dockerfile.extbuild.rocky8 -t hwmon-ext:rocky8 .
-#   docker run --rm -v "$PWD/out:/out" hwmon-ext:rocky8
-FROM rockylinux:8
+#   docker build -f packaging/docker/Dockerfile.extbuild-rocky9 -t hwmon-ext:rocky9 .
+#   docker run --rm -v "$PWD/out:/out" hwmon-ext:rocky9
+FROM rockylinux:9
 
 # gcc/make are required to compile the generated C; python3-devel headers come
 # from uv's own interpreter, so the distro's python-devel is deliberately not
 # installed — mixing the two is exactly how ABI mismatches start.
-RUN dnf -y install gcc gcc-c++ make curl ca-certificates tar gzip findutils \
+# --allowerasing: Rocky 9's base image ships curl-minimal, which conflicts with
+# the full curl package. Without the flag dnf refuses to proceed. The installer
+# works with either, so dropping the minimal variant is safe here.
+RUN dnf -y --allowerasing install gcc gcc-c++ make curl ca-certificates tar gzip findutils \
  && dnf clean all && rm -rf /var/cache/dnf
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
@@ -41,12 +49,12 @@ RUN uv sync --frozen --extra cython --no-dev
 
 # Record the toolchain so the comparison doc can state exactly what produced
 # each artifact instead of relying on the base image tag alone.
-RUN { echo "base_image: rockylinux:8"; \
+RUN { echo "base_image: rockylinux:9"; \
       echo "interpreter: $(python -VV)"; \
       echo "glibc: $(ldd --version | head -1)"; \
       echo "gcc: $(gcc --version | head -1)"; \
     } | tee /src/toolchain.txt
 
 # Output goes to /out so the host (or another container) can pick it up:
-#   docker run --rm -v "$PWD/out:/out" hwmon-ext:rocky8
+#   docker run --rm -v "$PWD/out:/out" hwmon-ext:rocky9
 CMD ["sh", "-c", "python packaging/build_ext.py --out /out && cp toolchain.txt /out/"]

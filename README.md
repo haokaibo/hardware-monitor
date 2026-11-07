@@ -108,7 +108,7 @@ Or with Docker (uses `uv` inside the image too):
 
 ```bash
 docker compose up -d --build
-# RHEL targets: docker build -f packaging/docker/Dockerfile.rocky9 -t hwmon-web .
+# RHEL targets: docker build -f packaging/docker/Dockerfile.web-rocky9 -t hwmon-web .
 ```
 
 **3. Verify a downloaded artefact before installing it**

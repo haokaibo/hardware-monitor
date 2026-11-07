@@ -237,12 +237,12 @@ def test_static_assets_are_world_readable():
 def test_dockerfiles_make_the_package_readable():
     """Each image that *runs* the package must not rely on repo file modes.
 
-    Images named Dockerfile.extbuild.* only compile extensions and never run the
+    Images named Dockerfile.extbuild-* only compile extensions and never run the
     service, so the rule does not apply to them.
     """
     runtime_images = [
         REPO / "Dockerfile",
-        *(p for p in (REPO / "packaging" / "docker").glob("Dockerfile.*") if ".extbuild." not in p.name),
+        *(p for p in (REPO / "packaging" / "docker").glob("Dockerfile.*") if ".extbuild-" not in p.name),
     ]
     assert len(runtime_images) >= 3, [p.name for p in runtime_images]
     for path in runtime_images:
@@ -310,3 +310,68 @@ def test_rpm_declares_uv_and_reports_provisioning_failure():
     post = spec.split("%post", 1)[1].split("%preun", 1)[0]
     assert "FAILED" in post               # a silent echo was the old behaviour
     assert "offline-bundle.sh" in post    # the operator is told how to recover
+
+
+def test_docker_image_names_state_their_purpose():
+    """Two kinds of image live side by side; the names must not be ambiguous.
+
+    Dockerfile.web-* deploys the service, Dockerfile.extbuild-* produces
+    artefacts. An earlier naming scheme (Dockerfile.rocky8 next to
+    Dockerfile.extbuild.rocky8) was one character apart, and the runtime images
+    were even described as "build image" in their own headers.
+    """
+    from pathlib import Path
+
+    images = {p.name: p for p in (REPO / "packaging" / "docker").glob("Dockerfile.*")}
+    assert images, "no images found"
+
+    for name, path in images.items():
+        assert name.startswith(("Dockerfile.web-", "Dockerfile.extbuild-")), (
+            f"{name} does not declare web- or extbuild- in its name"
+        )
+        header = path.read_text().splitlines()[0]
+        if name.startswith("Dockerfile.web-"):
+            assert "RUNTIME" in header, f"{name} should be labelled a runtime image: {header}"
+        else:
+            assert "BUILD" in header, f"{name} should be labelled a build image: {header}"
+
+    # both flavours exist for each Rocky release, so the pairs stay obvious
+    for release in ("rocky8", "rocky9"):
+        assert f"Dockerfile.web-{release}" in images
+        assert f"Dockerfile.extbuild-{release}" in images
+
+
+def test_rocky_images_resolve_the_curl_package_conflict():
+    """Rocky 9 pre-installs curl-minimal, which blocks the full curl package.
+
+    Three valid resolutions, and each image must use one of them deliberately:
+      - Rocky 8: install plain `curl` (curl-minimal does not exist there)
+      - Rocky 9 web: install `curl-minimal` (already present, no conflict)
+      - Rocky 9 extbuild: install `curl` with --allowerasing
+    All four images were broken in one direction or the other before this was
+    pinned; only actually building them exposed it.
+    """
+    import re
+
+    for name in (
+        "Dockerfile.web-rocky8",
+        "Dockerfile.web-rocky9",
+        "Dockerfile.extbuild-rocky8",
+        "Dockerfile.extbuild-rocky9",
+    ):
+        path = REPO / "packaging" / "docker" / name
+        if not path.exists():
+            continue
+        text = path.read_text()
+        line = re.search(r"^RUN dnf[^\n]*install[^\n]*", text, re.M)
+        assert line, f"{name}: no dnf install line"
+        cmd = line.group(0)
+
+        if "rocky8" in name:
+            # Rocky 8 has no curl-minimal at all
+            assert "curl-minimal" not in cmd, f"{name}: Rocky 8 has no curl-minimal"
+            assert re.search(r"\bcurl\b", cmd), f"{name}: needs curl"
+        else:
+            # Rocky 9: either the minimal package, or plain curl with --allowerasing
+            ok = "curl-minimal" in cmd or "--allowerasing" in cmd
+            assert ok, f"{name}: Rocky 9 needs curl-minimal or --allowerasing, got {cmd!r}"

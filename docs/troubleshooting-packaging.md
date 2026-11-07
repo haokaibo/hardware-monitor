@@ -101,7 +101,7 @@ ldd --version | head -1
 If the first number is higher than the second, the artifact is unusable here.
 
 Fix: rebuild on the oldest distribution you must support (Rocky 8 → glibc 2.28,
-Rocky 9 → 2.34), which is why `packaging/docker/Dockerfile.extbuild.rocky8`
+Rocky 9 → 2.34), which is why `packaging/docker/Dockerfile.extbuild-rocky8`
 exists. See [packaging-comparison.md](packaging-comparison.md) for the measured
 one-way compatibility and the caveat that a simple module can hide the problem
 by never binding a newer symbol.

@@ -1,11 +1,16 @@
-# Rocky Linux 9 build image for the hwmon web client.
+# RUNTIME image (deploys the service) - not a build image.
+#
+# Produces the hwmon web client on Rocky Linux 9. The result is what you run:
+#   docker run ... hwmon-web:rocky9
+# For the image that compiles Cython extensions instead, see
+# Dockerfile.extbuild-rocky9.
 #
 # Rocky 9 ships Python 3.9 — still below the project floor — so this uses the
 # same pinned-interpreter approach as the Rocky 8 image. Keeping both files
 # identical apart from the base image makes the difference obvious.
 #
 # Build from the repository root:
-#   docker build -f packaging/docker/Dockerfile.rocky9 -t hwmon-web:rocky9 .
+#   docker build -f packaging/docker/Dockerfile.web-rocky9 -t hwmon-web:rocky9 .
 FROM rockylinux:9
 
 ENV PYTHON_VERSION=3.12 \
@@ -15,7 +20,11 @@ ENV PYTHON_VERSION=3.12 \
     UV_PROJECT_ENVIRONMENT=/opt/hwmon/venv \
     PATH=/opt/hwmon/venv/bin:$PATH
 
-RUN dnf -y install curl ca-certificates tar gzip \
+# curl-minimal, not curl: Rocky 9's base image already provides curl-minimal and
+# dnf refuses to install the full curl package alongside it. The minimal variant
+# has everything the installer needs. (Rocky 8 does not have this package split,
+# so its image installs curl directly - see Dockerfile.web-rocky8.)
+RUN dnf -y install curl-minimal ca-certificates tar gzip \
  && curl -LsSf https://astral.sh/uv/install.sh | sh \
  && install -m 0755 "$(command -v uv || echo "$HOME/.local/bin/uv")" /usr/local/bin/uv \
  && dnf clean all && rm -rf /var/cache/dnf

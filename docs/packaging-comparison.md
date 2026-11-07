@@ -156,8 +156,8 @@ decision is expressed — see also `tests/test_cython_build.py`, which asserts
 ## Reproducing the experiment
 
 ```bash
-docker build -f packaging/docker/Dockerfile.extbuild.rocky8 -t hwmon-ext:rocky8 .
-docker build -f packaging/docker/Dockerfile.extbuild.rocky9 -t hwmon-ext:rocky9 .
+docker build -f packaging/docker/Dockerfile.extbuild-rocky8 -t hwmon-ext:rocky8 .
+docker build -f packaging/docker/Dockerfile.extbuild-rocky9 -t hwmon-ext:rocky9 .
 
 mkdir -p out/r8 out/r9
 docker run --rm -v "$PWD/out/r8:/out" hwmon-ext:rocky8
