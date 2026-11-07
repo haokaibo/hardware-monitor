@@ -1,0 +1,157 @@
+<svg width="100%" viewBox="0 0 900 620" role="img" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff" aria-label="hwmon runtime and delivery architecture">
+  <title>hwmon runtime and delivery architecture</title>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6b6b6b"/>
+    </marker>
+    <style>
+      .t   { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .h   { font-size: 15px; font-weight: 600; fill: #1a1a1a; }
+      .sub { font-size: 11px; fill: #6b6b6b; }
+      .lbl { font-size: 11.5px; font-weight: 600; fill: #1a1a1a; }
+      .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; fill: #4a4a4a; }
+      .box { fill: #fafafa; stroke: #d4d4d4; stroke-width: 1; rx: 8; }
+      .box2{ fill: #f0f0f0; stroke: #c4c4c4; stroke-width: 1; rx: 8; }
+      .warm{ fill: #fdf6ec; stroke: #e3c08a; stroke-width: 1; rx: 8; }
+      .flow{ stroke: #6b6b6b; stroke-width: 1.2; fill: none; marker-end: url(#ah); }
+      .rule{ stroke: #e6e6e6; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <!-- ==================== RUNTIME ==================== -->
+  <text class="t h" x="30" y="34">1 · Runtime architecture</text>
+  <text class="t sub" x="30" y="52">what runs after install · no database, no web framework · Linux + AMD only</text>
+
+  <!-- monitored host -->
+  <rect class="box" x="30" y="72" width="250" height="228"/>
+  <text class="t lbl" x="46" y="94">Monitored host</text>
+  <text class="t sub" x="46" y="110">systemd · root · agent role</text>
+
+  <rect class="box2" x="46" y="122" width="218" height="46"/>
+  <text class="t mono" x="58" y="141">/proc  /sys  hwmon</text>
+  <text class="t sub" x="58" y="157">stat · cpuinfo · meminfo · mounts</text>
+
+  <rect class="box2" x="46" y="178" width="218" height="46"/>
+  <text class="t lbl" x="58" y="196">collectors/</text>
+  <text class="t mono" x="58" y="212">cpu mem gpu disk</text>
+
+  <rect class="box2" x="46" y="234" width="218" height="50"/>
+  <text class="t lbl" x="58" y="252">sampler</text>
+  <text class="t sub" x="58" y="267">1 Hz · ts advances only on success</text>
+
+  <path class="flow" d="M155 168 L155 176"/>
+  <path class="flow" d="M155 224 L155 232"/>
+
+  <!-- wire -->
+  <path class="flow" d="M280 259 L360 259"/>
+  <text class="t mono" x="292" y="250">HTTP :9101</text>
+  <text class="t sub" x="292" y="275">X-Token</text>
+
+  <!-- web host / container -->
+  <rect class="box" x="360" y="72" width="250" height="228"/>
+  <text class="t lbl" x="376" y="94">Web client</text>
+  <text class="t sub" x="376" y="110">container · unprivileged user · web role</text>
+
+  <rect class="box2" x="376" y="120" width="218" height="52"/>
+  <text class="t lbl" x="388" y="140">server.py</text>
+  <text class="t mono" x="388" y="153">/  /healthz</text>
+  <text class="t mono" x="388" y="166">/api/info  /api/metrics</text>
+
+  <rect class="box2" x="376" y="178" width="218" height="52"/>
+  <text class="t lbl" x="388" y="196">proxy</text>
+  <text class="t sub" x="388" y="211">forwards /api/metrics</text>
+  <text class="t sub" x="388" y="224">502 when the agent is down</text>
+
+  <rect class="box2" x="376" y="238" width="218" height="50"/>
+  <text class="t lbl" x="388" y="256">static/</text>
+  <text class="t sub" x="388" y="271">index.html · no build step · EN / ZH</text>
+
+  <path class="flow" d="M485 172 L485 176"/>
+  <path class="flow" d="M485 230 L485 236"/>
+
+  <!-- browser -->
+  <path class="flow" d="M610 259 L690 259"/>
+  <text class="t mono" x="614" y="250">HTTP :8080</text>
+
+  <rect class="box" x="690" y="72" width="180" height="228"/>
+  <text class="t lbl" x="706" y="94">Browser</text>
+  <text class="t sub" x="706" y="110">never talks to the agent</text>
+  <rect class="box2" x="706" y="122" width="148" height="46"/>
+  <text class="t sub" x="718" y="141">poll 1 Hz</text>
+  <text class="t sub" x="718" y="157">ring buffer 1 h</text>
+  <rect class="box2" x="706" y="178" width="148" height="46"/>
+  <text class="t sub" x="718" y="197">staleness from ts</text>
+  <text class="t sub" x="718" y="213">thresholds in page</text>
+
+  <!-- pro tier -->
+  <rect class="warm" x="30" y="318" width="840" height="118"/>
+  <text class="t lbl" x="46" y="340">Pro tier · src/hwmon/pro/ · optional, compiled in packaged builds</text>
+  <text class="t sub" x="46" y="356">the open tiers above never import it; the runtime does not need it either</text>
+
+  <rect class="box2" x="46" y="368" width="270" height="54"/>
+  <text class="t lbl" x="60" y="386">history.py</text>
+  <text class="t sub" x="60" y="401">SQLite · range queries</text>
+  <text class="t sub" x="60" y="415">bucketed downsampling</text>
+
+  <rect class="box2" x="330" y="368" width="270" height="54"/>
+  <text class="t lbl" x="344" y="386">alerts.py</text>
+  <text class="t sub" x="344" y="401">threshold rules · debounce</text>
+  <text class="t sub" x="344" y="415">fires on transition, not per sample</text>
+
+  <rect class="box2" x="614" y="368" width="240" height="54"/>
+  <text class="t lbl" x="628" y="386">contract.py</text>
+  <text class="t sub" x="628" y="401">HISTORY + ALERT fields</text>
+  <text class="t sub" x="628" y="415">shared with the tests</text>
+
+  <!-- ==================== DELIVERY ==================== -->
+  <line class="rule" x1="30" y1="462" x2="870" y2="462"/>
+
+  <text class="t h" x="30" y="490">2 · Delivery and distribution</text>
+  <text class="t sub" x="30" y="508">uv manages dependencies and the interpreter · two remotes, two different jobs</text>
+
+  <!-- source -->
+  <rect class="box" x="30" y="524" width="150" height="72"/>
+  <text class="t lbl" x="44" y="544">Source</text>
+  <text class="t mono" x="44" y="561">pyproject.toml</text>
+  <text class="t mono" x="44" y="575">uv.lock</text>
+  <text class="t mono" x="44" y="589">.python-version</text>
+
+  <path class="flow" d="M180 560 L206 560"/>
+
+  <!-- github -->
+  <rect class="box2" x="206" y="524" width="150" height="72"/>
+  <text class="t lbl" x="220" y="544">GitHub</text>
+  <text class="t sub" x="220" y="560">5 Pythons · 3.10 to 3.13</text>
+  <text class="t sub" x="220" y="575">Linux job · never deploys</text>
+  <text class="t sub" x="220" y="589">build + smoke</text>
+
+  <path class="flow" d="M356 560 L382 560"/>
+
+  <!-- gitea -->
+  <rect class="box2" x="382" y="524" width="150" height="72"/>
+  <text class="t lbl" x="396" y="544">Gitea (intranet)</text>
+  <text class="t sub" x="396" y="560">self-hosted runner</text>
+  <text class="t sub" x="396" y="575">docker compose up</text>
+  <text class="t sub" x="396" y="589">health check</text>
+
+  <path class="flow" d="M532 560 L558 560"/>
+
+  <!-- artefacts -->
+  <rect class="box2" x="558" y="524" width="150" height="72"/>
+  <text class="t lbl" x="572" y="544">Artefacts</text>
+  <text class="t sub" x="572" y="560">wheel · sdist · RPM</text>
+  <text class="t sub" x="572" y="575">Cython .so for pro/</text>
+  <text class="t sub" x="572" y="589">air-gap bundle</text>
+
+  <path class="flow" d="M708 560 L734 560"/>
+
+  <!-- target -->
+  <rect class="warm" x="726" y="524" width="144" height="72"/>
+  <text class="t lbl" x="738" y="544">Target host</text>
+  <text class="t sub" x="738" y="560">RPM, or</text>
+  <text class="t mono" x="738" y="575">hwmon-setup</text>
+  <text class="t sub" x="738" y="589">--offline / uv sync</text>
+
+  <!-- supporting layers -->
+  <text class="t sub" x="30" y="612">Integrity: SBOM (syft) + SHA256SUMS + Ed25519 signatures · verification fails closed · packaging/ holds every build path</text>
+</svg>

@@ -41,7 +41,7 @@ COPY docker-compose.yml Dockerfile ./
 # when a document is added - a missing entry fails as FileNotFoundError inside a
 # test, which looks like a code bug. tests/test_packaging.py guards it.
 COPY VERSION LICENSE ./
-COPY README.md README.zh-CN.md AGENT.md SECURITY.md BUILD-COMPARISON.md ./
+COPY README.md README.zh-CN.md AGENT.md SECURITY.md BUILD-COMPARISON.md design.md ./
 RUN uv sync --frozen --all-extras
 # make sources world-readable for any non-root user
 RUN chmod -R a+rX /src

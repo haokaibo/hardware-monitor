@@ -585,3 +585,48 @@ def test_readme_languages_list_the_same_files():
 
     assert sorted(en - zh) == [], f"only in README.md: {sorted(en - zh)}"
     assert sorted(zh - en) == [], f"only in README.zh-CN.md: {sorted(zh - en)}"
+
+
+# ---------------------------------------------------------------- design.md
+
+
+def test_design_md_embeds_an_svg_that_exists():
+    import re
+
+    doc = (REPO / "design.md").read_text()
+    images = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", doc)
+    assert images, "design.md embeds no diagram"
+    for rel in images:
+        path = REPO / rel
+        assert path.exists(), f"design.md embeds a missing file: {rel}"
+        assert path.suffix == ".svg"
+        # must be a real drawing, not a placeholder
+        text = path.read_text()
+        assert text.lstrip().startswith("<svg"), f"{rel} is not an SVG"
+        assert text.count("<text") >= 20, f"{rel} has too little content to be an architecture diagram"
+
+
+def test_design_svg_has_no_embedded_provenance_metadata():
+    """Editor-generated SVGs can carry a C2PA manifest and a base64 blob.
+
+    Those inflate the file, describe the tool rather than the system, and are
+    invisible in a browser. The diagram should be readable source.
+    """
+    svg = (REPO / "docs" / "hwmon_architecture.svg").read_text()
+    assert "<metadata>" not in svg
+    assert "c2pa" not in svg
+    # and small enough that a reviewer can read the source
+    assert len(svg) < 40_000, "diagram is too large to review as source"
+
+
+def test_design_md_states_the_runtime_and_the_delivery():
+    """Both halves the diagram claims to answer must be explained in text."""
+    doc = (REPO / "design.md").read_text()
+    # runtime
+    for needle in ("hwmon agent", "hwmon web", "src/hwmon/pro/", "sampler.py"):
+        assert needle in doc, f"design.md does not describe {needle}"
+    # delivery
+    for needle in ("uv.lock", "Gitea", "GitHub", "offline-bundle.sh", "sbom.sh"):
+        assert needle in doc, f"design.md does not describe {needle}"
+    # the CI matrix the diagram shows
+    assert "3.10" in doc and "3.13" in doc
