@@ -630,3 +630,56 @@ def test_design_md_states_the_runtime_and_the_delivery():
         assert needle in doc, f"design.md does not describe {needle}"
     # the CI matrix the diagram shows
     assert "3.10" in doc and "3.13" in doc
+
+
+def test_design_svg_shows_the_two_remotes_in_parallel():
+    """GitHub verifies; Gitea delivers. They are not a chain.
+
+    The first version drew Source -> GitHub -> Gitea -> Artifacts -> Target as a
+    single line, which reads as "GitHub hands to Gitea". Nothing connects them:
+    both receive every push, and each platform reads only its own workflow
+    directory. A reviewer should not have to read the code to learn that.
+    """
+    import re
+
+    svg = (REPO / "docs" / "hwmon_architecture.svg").read_text()
+
+    # both remotes are present and labelled with their role
+    assert "GitHub · hosted runners" in svg
+    assert "Gitea · intranet" in svg
+    assert "Verification only" in svg
+    assert "Built on the Docker host" in svg
+
+    # Two arrows leave the source at different heights: the fork is explicit.
+    fork = re.findall(r'class="flow" d="M180 (\d+) L212 \d+ L212 (\d+) L246 \d+"', svg)
+    assert len(fork) == 2, f"expected a fork from the source, found {len(fork)}"
+    ys = sorted(int(a) for a, _ in fork)
+    assert ys[1] != ys[0], f"fork branches share a height: {ys}"
+
+    # The load-bearing property. Inside the delivery section, no arrow may span
+    # the vertical gap between the GitHub row and the Gitea row; such an arrow
+    # would mean GitHub flows into Gitea, which is what the original
+    # single-line drawing implied. Both axis-aligned and diagonal are checked,
+    # because the first version of this test only looked at diagonals and let a
+    # vertical connector straight through.
+    delivery = svg.split("DELIVERY ====================", 1)[1]
+    paths = re.findall(r'class="flow" d="([^"]+)"', delivery)
+
+    def endpoints(d):
+        pts = re.findall(r'[ML]\s*(\d+)\s+(\d+)', d)
+        return (int(pts[0][0]), int(pts[0][1])), (int(pts[-1][0]), int(pts[-1][1]))
+
+    # the fork exits the source box; everything else must stay within one row
+    bridged = []
+    for d in paths:
+        if d.startswith("M180"):
+            continue
+        (x0, y0), (x1, y1) = endpoints(d)
+        if abs(y1 - y0) > 8:          # a step larger than a corner radius
+            bridged.append(d)
+    assert bridged == [], (
+        "an arrow spans between the GitHub and Gitea rows: " + str(bridged)
+    )
+
+    doc = (REPO / "design.md").read_text()
+    assert "parallel paths" in doc or "One source, two parallel" in doc

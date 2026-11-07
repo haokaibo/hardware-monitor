@@ -71,27 +71,37 @@ is `cryptography`, needed for signature verification.
 lock with `--frozen`, so a stale lock fails loudly rather than resolving to
 something nobody tested.
 
-### Two remotes, two different jobs
+### One source, two parallel paths
+
+The two remotes are **not** a chain: they both receive every push, and neither
+can trigger the other's pipeline, because each platform reads only its own
+workflow directory.
 
 | | GitHub | Gitea (intranet) |
 |---|---|---|
-| Runs on | hosted runners | self-hosted runner on the Docker host |
-| Does | 5 Python versions (3.10–3.13), a Linux container job against a real `/proc` and `/sys`, docs check, `docker build` + boot smoke, sdist/wheel | `docker compose up -d --build`, health check, roll |
-| Deploys | **never** | this is the only deployer |
+| Runs on | hosted runners | self-hosted runner on the Docker host, tagged `hwmon-host` |
+| Role | **verification only** | **the only deliverer** |
+| Does | 5 Python versions (3.10–3.13), a Linux container job against a real `/proc` and `/sys`, docs check, `docker build` + boot smoke, sdist/wheel | `docker compose up -d --build`, health check, roll the container |
+| Produces | evidence that the tree builds and boots; artefacts are CI output, not a release channel | the running image, the compiled `pro/*.so`, the offline bundle |
+| Deploys | **never** — no deploy step exists | yes, to `/opt/hwmon` |
 
-Both remotes receive every push; neither can trigger the other's pipeline,
-because each platform reads only its own workflow directory.
+Keeping them separate is deliberate: the intranet deploy must not depend on a
+public CI service, and a public PR must not be able to reach the Docker host.
 
 ### Artefacts
 
+Everything below is produced by the **Gitea** path (or locally); GitHub builds
+them only to prove they build.
+
 | Artefact | Built by | For |
 |---|---|---|
-| wheel / sdist | `uv build` | library use, PyPI-style distribution |
-| RPM | `packaging/hwmonpro.spec` | Rocky 8/9; `%build` compiles the pro extensions, `%install` only copies |
-| container image | `Dockerfile`, `packaging/docker/Dockerfile.web-rocky{8,9}` | the web client |
-| extension build image | `packaging/docker/Dockerfile.extbuild-rocky{8,9}` | produces `pro/*.so`, does not run the service |
-| collector binary | `packaging/build_exe.py` (PyInstaller) | a diagnostic CLI for an arbitrary machine |
+| container image | `Dockerfile`, `packaging/docker/Dockerfile.web-rocky{8,9}` | the web client; built on the Docker host by the deploy job |
+| `pro/*.so` | `packaging/build_ext.py` (Cython), run in the RPM `%build` | the compiled pro tier |
+| RPM | `packaging/hwmonpro.spec` | Rocky 8/9; `%build` compiles the extensions, `%install` only copies |
 | air-gap bundle | `packaging/offline-bundle.sh` | interpreter + wheels + checksums for hosts with no network |
+| wheel / sdist | `uv build` | library use; GitHub uploads these as CI artefacts, not as a release |
+| collector binary | `packaging/build_exe.py` (PyInstaller) | a diagnostic CLI for an arbitrary machine |
+| extension build image | `packaging/docker/Dockerfile.extbuild-rocky{8,9}` | produces `.so` for the glibc comparison; does not run the service |
 
 Rocky 8 and 9 ship Python 3.6 and 3.9 — below the floor — so the RPM and the
 images provision a pinned interpreter rather than relying on the distribution's.
