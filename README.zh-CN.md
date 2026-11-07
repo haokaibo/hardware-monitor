@@ -213,6 +213,7 @@ packaging/
   offline-bundle.sh 离线包：解释器 + wheel + 校验和
   sbom.sh           SBOM（syft）+ SHA256SUMS + Ed25519 签名
   benchmark.sh      在 Linux 上测量三种打包方式
+  check_readme.py   校验这份目录说明与代码树是否一致（CI 与测试共用）
   docker/           Dockerfile.web-rocky{8,9}       运行镜像
                     Dockerfile.extbuild-rocky{8,9}  扩展编译镜像
 dev/

@@ -532,3 +532,56 @@ def test_readme_does_not_hardcode_a_test_count():
         text = (REPO / name).read_text()
         stale = re.findall(r"#\s*\d+\s*(?:tests|个用例)", text)
         assert stale == [], f"{name} hardcodes a test count: {stale}"
+
+
+def test_check_readme_script_reports_in_sync():
+    """The same script CI runs; it must pass on the current tree."""
+    import subprocess
+
+    proc = subprocess.run(
+        [sys.executable, str(REPO / "packaging" / "check_readme.py")],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+
+
+def test_check_readme_script_detects_undocumented_module(tmp_path):
+    """Adding a module without documenting it must fail the check.
+
+    This is the direction the existing tests did not cover: they only asserted
+    that files named in the README exist, so new code could be added silently.
+    """
+    import subprocess
+
+    probe = REPO / "src" / "hwmon" / "_probe_undocumented.py"
+    probe.write_text("# temporary probe\n")
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(REPO / "packaging" / "check_readme.py")],
+            capture_output=True, text=True,
+        )
+        assert proc.returncode == 1
+        assert "_probe_undocumented.py" in proc.stderr
+    finally:
+        probe.unlink()
+
+
+def test_readme_languages_list_the_same_files():
+    """README.zh-CN.md is a translation; the file lists must not diverge."""
+    import re
+
+    pattern = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./-]*\.[a-z]{2,4}\b")
+
+    def block(path, marker):
+        text = (REPO / path).read_text(encoding="utf-8")
+        rest = text.split(marker, 1)[1]
+        end = rest.find("\n## ")
+        return rest if end == -1 else rest[:end]
+
+    en = set(pattern.findall(block("README.md", "## Project layout")))
+    zh = set(pattern.findall(block("README.zh-CN.md", "## 目录结构")))
+    en.discard("README.zh-CN.md")
+    zh.discard("README.md")
+
+    assert sorted(en - zh) == [], f"only in README.md: {sorted(en - zh)}"
+    assert sorted(zh - en) == [], f"only in README.zh-CN.md: {sorted(zh - en)}"

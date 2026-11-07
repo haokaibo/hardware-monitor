@@ -233,6 +233,7 @@ packaging/
   offline-bundle.sh air-gap bundle: interpreter + wheels + checksums
   sbom.sh           SBOM (syft) + SHA256SUMS + Ed25519 signatures
   benchmark.sh      measures the three packaging approaches on Linux
+  check_readme.py   verifies this layout block against the tree (CI + tests)
   docker/           Dockerfile.web-rocky{8,9}       runtime
                     Dockerfile.extbuild-rocky{8,9}  extension builds
 dev/
