@@ -410,3 +410,69 @@ def test_benchmark_script_is_executable_and_syntactically_valid():
     assert script.is_file()
     proc = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
+
+
+def test_readme_project_layout_matches_the_tree():
+    """The layout block is the first thing a visitor reads, so it cannot drift.
+
+    It described a single-file `app.py` long after the code became a uv-managed
+    package, which made the repository look far smaller than it is. This test
+    fails when the block names a path that does not exist, or when a top-level
+    directory/package is missing from it.
+    """
+    import re
+
+    readme = (REPO / "README.md").read_text()
+    block = readme.split("## Project layout", 1)[1].split("\n## ", 1)[0]
+
+    # dev/ is not copied into the test image (it defines the image), so paths
+    # under it cannot be validated from inside the container. The structural
+    # checks below still run; only the existence check skips those names.
+    in_image = (REPO / "dev").is_dir()
+
+    # 1. every path the block names must exist somewhere sensible
+    bases = (
+        "", "src/hwmon", "src/hwmon/collectors", "src/hwmon/pro", "src/hwmon/static",
+        "tests", "packaging", "packaging/docker", "docs",
+        ".github/workflows", ".gitea/workflows", "licensing",
+    )
+    if in_image:
+        bases = bases + ("dev",)
+    named = set(re.findall(r"[A-Za-z0-9_./-]+\.(?:py|md|toml|lock|sh|svg|html|spec|yaml|yml|txt)", block))
+    if not in_image:
+        named -= {"Dockerfile.test", "run-tests.sh"}
+    missing = sorted(n for n in named if not any((REPO / b / n).exists() for b in bases))
+    assert missing == [], f"README layout names paths that do not exist: {missing}"
+
+    # 2. the structure that makes this project what it is must be mentioned
+    for required in (
+        "src/hwmon/",
+        "collectors/",
+        "pro/",
+        "static/",
+        "licensing/",
+        "packaging/",
+        "dev/",
+        "tests/",
+        "hwmonpro.spec",
+        "build_ext.py",
+        "build_exe.py",
+        "offline-bundle.sh",
+        "sbom.sh",
+        "Dockerfile.web-rocky",
+        "Dockerfile.extbuild-rocky",
+    ):
+        assert required in block, f"README layout omits {required}"
+
+    # 3. and it must not describe the architecture this repo no longer has
+    for stale in ("app.py", "one file, stdlib only", "test_app.py"):
+        assert stale not in block, f"README layout still mentions {stale!r}"
+
+
+def test_chinese_readme_layout_is_not_stale():
+    readme = (REPO / "README.zh-CN.md").read_text()
+    block = readme.split("## 目录结构", 1)[1].split("\n## ", 1)[0]
+    for stale in ("app.py", "单文件，纯标准库", "test_app.py"):
+        assert stale not in block, f"中文目录结构仍提到 {stale!r}"
+    for required in ("src/hwmon/", "collectors/", "pro/", "licensing/", "packaging/", "dev/"):
+        assert required in block, f"中文目录结构缺少 {required}"

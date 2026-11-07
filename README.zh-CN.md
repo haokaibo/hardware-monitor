@@ -181,20 +181,61 @@ uv run python tests/smoke.py http://127.0.0.1:8080 \
 ## 目录结构
 
 ```
-app.py            agent + web 服务（单文件，纯标准库）
-index.html        仪表盘（单文件，中/英双语，无构建步骤）
-VERSION           major.minor 基础版本（如 1.0.0）；build 号 = 总 commit 数
-tests/            测试套件（无第三方依赖）
-  contract.py       /api/metrics 数据契约
-  test_app.py       单元测试（unittest）
-  smoke.py          部署后冒烟测试
-  fixtures/         测试用样例数据
-docs/             部署文档、打包对比、离线安装、排障手册
-.github/workflows/  GitHub CI（测试 + docker build，不做部署）
+pyproject.toml / uv.lock / .python-version   依赖与解释器的唯一来源
+VERSION                                      major.minor 基础版本；build 号 = 总 commit 数
+src/hwmon/
+  cli.py            hwmon agent | web | verify | sign | keygen
+  __main__.py       python -m hwmon
+  config.py         Config.from_env、版本解析
+  sysfs.py          容错的 /proc 与 /sys 读取（感知 HWMON_ROOT）
+  collectors/       每个子系统一个模块，通过 importlib 动态加载
+    cpu.py  mem.py  gpu.py  disk.py
+    __main__.py       python -m hwmon.collectors（探针/对比工具）
+  sampler.py        1 Hz 采样循环；ts 不变量在这里
+  server.py         两种角色的 HTTP 接口
+  contract.py       三份契约：/api/metrics、HISTORY、ALERT
+  release.py        产物 Ed25519 签名与校验
+  pro/              专业版，打包时编译为原生扩展
+    history.py        SQLite 历史存档
+    alerts.py         阈值告警引擎（防抖 + 滞回）
+  static/           index.html、favicon.svg（打进 wheel，无构建步骤）
+licensing/          许可证签发（issue.py）与校验（verify.py）
+                    verify.py 刻意保持源码，理由见 SECURITY.md
+packaging/
+  build_ext.py      pro 层的 Cython 构建
+  build_exe.py      诊断 CLI 的 PyInstaller 构建
+  nuitka_flags.txt  Nuitka 等价参数（已评估，未采用）
+  hwmonpro.spec     RPM：%build 编译，%install 只拷贝
+  offline-bundle.sh 离线包：解释器 + wheel + 校验和
+  sbom.sh           SBOM（syft）+ SHA256SUMS + Ed25519 签名
+  benchmark.sh      在 Linux 上测量三种打包方式
+  docker/           Dockerfile.web-rocky{8,9}       运行镜像
+                    Dockerfile.extbuild-rocky{8,9}  扩展编译镜像
+dev/
+  Dockerfile.test   Linux 测试环境（真实 /proc + /sys）
+  run-tests.sh      构建并运行它
+tests/              pytest 套件，235 个用例
+  conftest.py       假主机 fixture（HWMON_ROOT 重定向）
+  test_collectors.py        各子系统采集器
+  test_collector_loader.py  动态加载与 CLI
+  test_sampler.py           ts 不变量、磁盘刷新节奏
+  test_server.py            两种 HTTP 角色
+  test_contract.py          /api/metrics 契约
+  test_pro.py / test_pro_contract.py   专业版及其契约
+  test_release.py / test_licensing.py  签名与许可证校验
+  test_cython_build.py      编译产物、ABI 标签、docstring 剥离
+  test_packaging.py         锁文件/spec/Dockerfile 一致性
+  test_smoke.py / smoke.py  部署后冒烟检查
+  fixtures/         测试用样例数据（占位主机信息）
+docs/               deployment-ci.md、offline-install.md、troubleshooting.md、
+                    troubleshooting-packaging.md、packaging-comparison.md
+BUILD-COMPARISON.md linux/amd64 上 PyInstaller / Nuitka / Cython 实测数据
+AGENT.md            贡献者工作约定
+SECURITY.md         威胁模型：仅内网；许可证校验属于检测而非阻止
+Dockerfile / docker-compose.yml   默认 web 容器
+.github/workflows/  GitHub CI：5 个 Python 版本、Linux 容器 job、构建；不做部署
 .gitea/workflows/   Gitea 部署工作流（仅内网）
-SECURITY.md        安全模型：仅内网、无 TLS、无登录
-README.md          英文说明
-Dockerfile / docker-compose.yml   web 容器
+README.md           英文说明
 ```
 
 ## 双远端：Gitea + GitHub

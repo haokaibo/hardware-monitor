@@ -202,21 +202,61 @@ uv run python tests/smoke.py http://127.0.0.1:8080 \
 ## Project layout
 
 ```
-app.py            agent + web server (one file, stdlib only)
-index.html        dashboard (single file, EN/ZH, no build step)
-VERSION           major.minor base (e.g. 1.0.0); build number = total commits
-tests/            test suite (no third-party deps)
-  contract.py       shared /api/metrics data contract
-  test_app.py       unit tests (unittest)
-  smoke.py          post-deploy smoke test
-  fixtures/         sample metric payloads for tests
-docs/             deployment guides, packaging comparison,
-                  offline install, troubleshooting
-.github/workflows/  GitHub CI (tests + docker build; never deploys)
+pyproject.toml / uv.lock / .python-version   dependency and interpreter truth
+VERSION                                      major.minor base; build = total commits
+src/hwmon/
+  cli.py            hwmon agent | web | verify | sign | keygen
+  __main__.py       python -m hwmon
+  config.py         Config.from_env, version resolution
+  sysfs.py          tolerant /proc and /sys readers (HWMON_ROOT aware)
+  collectors/       one module per subsystem, loaded via importlib
+    cpu.py  mem.py  gpu.py  disk.py
+    __main__.py       python -m hwmon.collectors (probe/diff tool)
+  sampler.py        1 Hz sampling loop; the ts invariant lives here
+  server.py         HTTP surface for both roles
+  contract.py       three contracts: /api/metrics, HISTORY, ALERT
+  release.py        Ed25519 signing/verification of artefacts
+  pro/              pro tier, compiled in packaged builds
+    history.py        SQLite history store
+    alerts.py         threshold engine with debounce + hysteresis
+  static/           index.html, favicon.svg (packaged, no build step)
+licensing/          licence issuing (issue.py) and verification (verify.py,
+                    deliberately shipped as source - see SECURITY.md)
+packaging/
+  build_ext.py      Cython build for the pro tier
+  build_exe.py      PyInstaller build for the diagnostic CLI
+  nuitka_flags.txt  Nuitka equivalent (evaluated, not adopted)
+  hwmonpro.spec     RPM: %build compiles, %install only copies
+  offline-bundle.sh air-gap bundle: interpreter + wheels + checksums
+  sbom.sh           SBOM (syft) + SHA256SUMS + Ed25519 signatures
+  benchmark.sh      measures the three packaging approaches on Linux
+  docker/           Dockerfile.web-rocky{8,9}       runtime
+                    Dockerfile.extbuild-rocky{8,9}  extension builds
+dev/
+  Dockerfile.test   Linux test environment (real /proc + /sys)
+  run-tests.sh      build and run it
+tests/              pytest suite, 235 cases
+  conftest.py       fake-host fixture (HWMON_ROOT redirection)
+  test_collectors.py        per-subsystem collectors
+  test_collector_loader.py  dynamic loading + the CLI
+  test_sampler.py           ts invariant, disk cadence
+  test_server.py            both HTTP roles
+  test_contract.py          /api/metrics contract
+  test_pro.py / test_pro_contract.py   pro tier + its contract
+  test_release.py / test_licensing.py  signing and licence verification
+  test_cython_build.py      compiled artefacts, ABI tag, docstring stripping
+  test_packaging.py         lock/spec/Dockerfile consistency
+  test_smoke.py / smoke.py  post-deploy checks
+  fixtures/         sample payloads (placeholder host data)
+docs/               deployment-ci.md, offline-install.md, troubleshooting.md,
+                    troubleshooting-packaging.md, packaging-comparison.md
+BUILD-COMPARISON.md measured PyInstaller vs Nuitka vs Cython data (linux/amd64)
+AGENT.md            working agreement for contributors
+SECURITY.md         threat model: intranet-only, licence check is detection
+Dockerfile / docker-compose.yml   default web container
+.github/workflows/  GitHub CI: 5 Pythons, Linux container job, build; never deploys
 .gitea/workflows/   Gitea deploy workflow (intranet only)
-SECURITY.md       security model: intranet-only, no TLS, no login
-README.zh-CN.md   中文说明
-Dockerfile / docker-compose.yml   web container
+README.zh-CN.md     中文说明
 ```
 
 ## Two remotes: Gitea + GitHub
