@@ -261,17 +261,43 @@ def test_docstrings_are_stripped_from_compiled_modules(build_script):
 
 
 def test_build_comparison_doc_records_measured_facts():
-    """The comparison table must match what the builds actually produced."""
+    """The table must match the x86_64 run, and say how it was obtained."""
     doc = (REPO / "docs" / "build-comparison.md").read_text()
-    # all three options are represented with real numbers
     for tool in ("PyInstaller", "Nuitka", "Cython"):
         assert tool in doc
-    for number in ("8.8 MB", "7.5 MB", "236 KB", "0.33 s", "0.43 s", "0.03 s"):
+    # the Linux x86_64 numbers
+    for number in ("8.13 MB", "7.11 MB", "2.14 MB", "57 s", "213 ms", "171 ms"):
         assert number in doc, number
-    # the counter-intuitive result must be stated, not smoothed over
-    assert "started *slower*" in doc or "started slower" in doc
-    # and the honesty clause about protection
-    assert "not secrecy" in doc or "None of these stop a determined attacker" in doc
+    # the environment must be stated, including that the CPU is emulated
+    assert "linux/amd64" in doc
+    assert "1.85" in doc and "emulat" in doc
+    # macOS numbers are explicitly marked as superseded, not presented as current
+    assert "superseded" in doc.lower()
+    # the honesty clause about protection
+    assert "None of these stop a determined attacker" in doc
+
+
+def test_benchmark_script_refuses_to_time_a_broken_artefact():
+    """A missing binary is faster than any real run, so it must not be timed.
+
+    This happened: a stale path produced a 15 ms "Nuitka" result for a binary
+    that was not there, and `|| true` turned it into the winning number.
+    """
+    script = (REPO / "packaging" / "benchmark.sh").read_text()
+    # timeit validates before measuring
+    assert "ERROR" in script
+    assert "return 1" in script
+    # artefacts are asserted to exist
+    assert '[ -x "$PYI_BIN" ]' in script
+    assert '[ -x "$NUI_BIN" ]' in script
+    # and the toolchain gap that only appears on Linux
+    assert "binutils" in script
+
+
+def test_benchmark_declares_its_platform():
+    script = (REPO / "packaging" / "benchmark.sh").read_text()
+    assert "uname -m" in script
+    assert "glibc" in script
 
 
 def test_nuitka_is_declared_but_not_the_default_path():
@@ -281,4 +307,4 @@ def test_nuitka_is_declared_but_not_the_default_path():
     pyproject = (REPO / "pyproject.toml").read_text()
     assert "nuitka" in pyproject  # reachable via the `build` extra
     doc = (REPO / "docs" / "build-comparison.md").read_text()
-    assert "Nuitka is not used" in doc
+    assert "Nuitka is evaluated, not adopted" in doc

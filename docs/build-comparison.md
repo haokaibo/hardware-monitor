@@ -1,71 +1,118 @@
 # Packaging comparison: PyInstaller vs Nuitka vs Cython
 
-Measured on this repository, not copied from vendor benchmarks. Every number
-below was produced by building and running the artefact; commands are included.
+Measured on this repository. Every number comes from building and running the
+artefact; nothing is copied from vendor benchmarks.
 
-Platform for all measurements: macOS 15 arm64, CPython 3.12.11.
-Absolute times are platform specific; the **ratios and the structural findings**
-are what carry over to Linux.
+## Measurement environment, and why it matters
 
-## What is being packaged
+The numbers were first taken on macOS arm64 and **contradicted** what the same
+workload does on the deployment target. They are reported here for Linux x86_64
+only; the macOS figures are kept in a short section at the end because the
+difference is itself the finding.
 
-The three options are not interchangeable, and pretending otherwise is how this
-comparison usually goes wrong:
+| | |
+|---|---|
+| Platform | `linux/amd64`, glibc 2.41, 10 cores |
+| Interpreter | CPython 3.12.16 |
+| Host | Apple Silicon, amd64 container under QEMU emulation |
+| Emulation factor | **1.85×** (a 30 M-iteration integer loop: 2.91 s emulated vs 1.58 s native) |
 
-| Option | What it produces | What the customer needs |
+Everything below is emulated. Two consequences:
+
+* **Absolute times are ~1.9× slower than a native x86_64 machine.** Divide by
+  1.85 for a native estimate; the *ratios between the three options* are
+  unaffected, because all were measured the same way.
+* **Sizes and structural behaviour are exact** — they do not depend on CPU speed.
+
+Reproduce with:
+
+```bash
+docker run --rm --platform linux/amd64 -v "$PWD:/work" -w /work \
+  python:3.12-slim bash packaging/benchmark.sh
+```
+
+The script needs `binutils`, `gcc` and `libc6-dev` on Linux; it installs them.
+Their absence is invisible on macOS and stops PyInstaller outright.
+
+## What is being compared
+
+| Option | Produces | Customer needs |
 |---|---|---|
-| **PyInstaller onefile** | single executable with an embedded CPython and a frozen bytecode archive | nothing |
+| **PyInstaller onefile** | single executable, embedded CPython, frozen bytecode archive | nothing |
 | **Nuitka onefile** | single executable, own bootstrap, code compiled to C | nothing |
-| **Cython hybrid** | `.so` for `pro/`, source for the rest | **the same CPython minor version and glibc floor** |
+| **Cython hybrid** | `.so` for `pro/`, source for everything else | **same CPython minor version + glibc floor** |
 
-That last row is the whole decision. Cython does not ship a runtime; it makes the
-artefact smaller and faster but moves the interpreter requirement onto the
-customer. For a CLI given to an unknown machine, that is a hard constraint. For
-an RPM that already declares `Requires: python3.12`, it costs nothing.
+Cython does not ship a runtime. That is why its numbers are not directly
+comparable to the other two, and why the table marks them.
 
-## Numbers
+## Results
 
 | Metric | PyInstaller | Nuitka onefile | Cython hybrid |
 |---|---|---|---|
-| Artefact size | **8.8 MB** | 7.5 MB | 236 KB (`pro/*.so` only) |
-| Cold start | 0.78 s | 0.46 s | 0.04 s |
-| Warm start (x5) | 0.33 s | 0.43 s | **0.03 s** |
-| Build time | ~3 s | **28.5 s** (no ccache) | ~2 s |
-| Needs client Python | no | no | **yes, exact minor** |
-| PyInstaller `--collect-submodules` needed | **yes** | n/a | n/a |
-| Nuitka `--include-package` needed | n/a | **yes** | n/a |
+| Build time | 8 s | **57 s** | 9 s |
+| Artefact size | 8.13 MB | 7.11 MB | **2.14 MB** (incl. source) |
+| Cold start (first run) | 218 ms | **179 ms** | n/a |
+| Warm start (best of 5) | 213 ms | **171 ms** | n/a |
+| `pro` import cost | — | — | 136 ms |
+| Source baseline (`python -m`) | 131 ms | 131 ms | 131 ms |
+| Source `pro` import | — | — | 132 ms |
 
-Two results contradict the usual advice:
+Reading the table:
 
-* **Nuitka onefile started *slower* than PyInstaller** (0.43 s vs 0.33 s), while
-  its cold start was faster (0.46 s vs 0.78 s). PyInstaller pays a large
-  one-time cost unpacking to a temp dir on first run, then reuses it; Nuitka's
-  bootstrap decompresses its payload on every start. "Nuitka is faster" is a
-  statement about *execution* of compiled code, not about CLI startup dominated
-  by interpreter boot.
-* **Cython's 0.03 s is not comparable** to the others: it measures importing a
-  `.so` against an already-running interpreter, not launching a self-contained
-  binary. The like-for-like comparison is `python -m hwmon.collectors` (0.04 s,
-  source) versus the hybrid (0.03 s) — a ~25 % import improvement on the pro
-  modules, invisible in wall-clock CLI use.
+* **Nuitka is genuinely faster than PyInstaller here** — 171 ms vs 213 ms warm,
+  179 vs 218 cold. On Linux the bootstrap decompresses quickly and the compiled
+  code pays off. This is the opposite of what the macOS run showed.
+* **Nuitka costs 7× the build time** (57 s vs 8 s). With ccache a rebuild is much
+  faster; the first build always pays this.
+* **Cython's import cost is indistinguishable from source** (136 ms vs 132 ms,
+  inside noise). Compiling `pro/` is a protection measure, not a performance
+  measure — that should not be claimed otherwise.
+* PyInstaller's warm start barely beats cold (213 vs 218 ms): it extracts once
+  and reuses the temp dir, so the freezer overhead is small on Linux.
 
-## Dynamic imports: the trap each tool handles differently
+### Corrected figures for a native x86_64 host
 
-`hwmon.collectors` loads its modules with `importlib`. Both freezers fail on this
-by default, and both fail the same way — the binary builds cleanly and dies at
-runtime:
+Dividing the emulated times by 1.85 gives an estimate, not a measurement:
 
-| Tool | Without the flag | With the flag |
-|---|---|---|
-| PyInstaller | `CollectorNotFound: cannot import hwmon.collectors.cpu` | `--collect-submodules hwmon.collectors` → all four load |
-| Nuitka | same class of failure | `--include-package=hwmon.collectors` → all four load |
+| | PyInstaller | Nuitka | source baseline |
+|---|---|---|---|
+| Warm start (est.) | ~115 ms | ~92 ms | ~71 ms |
 
-Verified by building both and grepping the output for `CollectorNotFound`
-(0 occurrences with the flags, non-zero without).
+Treat these as order-of-magnitude. Anyone publishing them as measurements on a
+native machine should re-run the script there.
+
+## The correction that had to be made
+
+The first Linux run reported **Nuitka at 15 ms**, faster than the source
+interpreter itself. That was not a result: the Nuitka binary had not been built
+(the arm64 `/tmp` path was referenced from an amd64 container), so the timing
+loop measured `command not found`. A missing binary is faster than any real run,
+and `|| true` turned it into a plausible-looking minimum.
+
+`packaging/benchmark.sh` now:
+
+* fails loudly if an artefact is absent or does not run, before timing it,
+* ignores a failed invocation rather than timing it,
+* compares `pro` import against the source import, not against CLI startup.
+
+The lesson generalises: a benchmark that swallows failures will always flatter
+the option that is broken.
+
+## Dynamic imports
+
+`hwmon.collectors` uses `importlib`. Both freezers need an explicit flag or they
+produce a binary that builds cleanly and dies at runtime with
+`CollectorNotFound`:
+
+| Tool | Flag |
+|---|---|
+| PyInstaller | `--collect-submodules hwmon.collectors` |
+| Nuitka | `--include-package=hwmon.collectors` |
+
+Verified by building both and grepping their output for `CollectorNotFound`
+(zero with the flags).
 
 ## Reverse-engineering resistance
-
-This is where the tools genuinely differ, and where claims should be modest.
 
 ### PyInstaller: bytecode is recoverable
 
@@ -75,98 +122,78 @@ $ pyinstxtractor-ng dist/hwmon-cli
 [+] Successfully extracted pyinstaller archive
 ```
 
-The extracted tree contains `hwmon/collectors/cpu.pyc` and friends. Bytecode is
-enough to recover structure without a decompiler:
+The tree contains `hwmon/collectors/cpu.pyc` and friends. Without any
+decompiler, structure is already visible:
 
 ```
-module: <module>
 functions: ['reset', '_snapshot', '_model', '_average_freq_mhz', '_temperature', 'collect']
-string constants: 'CPU collector: usage from /proc/stat deltas...', 'dict[str, tuple[int, int]]', '_prev'
+string constants: 'CPU collector: usage from /proc/stat deltas...', '_prev'
 ```
 
-`dis` on the extracted code prints the full instruction stream with original
-function and variable names (121 lines for `collect()` alone). A Python
-decompiler recovers near-source. **PyInstaller offers no meaningful protection.**
+`dis` prints the full instruction stream with original names (121 lines for
+`collect()`). A Python decompiler recovers near-source.
 
-### Nuitka: no bytecode, but not opaque
+### Nuitka: no bytecode
 
-`dist/entry.dist/` contains a native binary plus a data folder; there is no
-`.pyc` and no `.so` for the Python modules. Source structure is not recoverable
-by extraction. It is still recoverable by disassembly — the code is C, and
-C decompilers exist — but that is a different order of effort from running a
-Python-specific tool.
+`entry.dist/` holds a native binary plus data; there is no `.pyc` and no `.so`
+for the Python modules. Recovery needs native disassembly.
 
-### Cython: no bytecode, symbols stripped
+### Cython: no bytecode, docstrings stripped
 
-Measured on `history.cpython-312-darwin.so`:
+Measured on `history.cpython-312-*.so`:
 
 ```
 exported symbols:        2
 source-line references:  0
-docstrings:              0   (after Options.docstrings = False)
-SQL literals:            present (required at runtime)
+docstrings:              0
 ```
 
-The `.so` contains no `.py`, no `.pyc`, no bytecode, and no prose describing the
-algorithm. Recovering logic requires native reverse engineering.
-
-One finding worth recording, because it was silent: **Cython keeps docstrings by
-default.** The first build still contained the module docstring
-("SQLite-backed history storage...") and every literal, which hands a reader a
-map of the algorithm for free. `docstrings` is a global option, not a compiler
+One silent leak was found and fixed: **Cython keeps docstrings by default**, so
+the first build still contained *"SQLite-backed history storage..."* and every
+literal — a prose map of the algorithm, readable with `strings`, no disassembly
+required. `docstrings` is a global Cython option rather than a compiler
 directive, so it is set via `Cython.Compiler.Options.docstrings = False` in
-`packaging/build_ext.py`. Verified: the module still works (records rows, fires
-alerts) with docstrings stripped.
+`packaging/build_ext.py`. Verified that the stripped module still records rows
+and fires alerts.
 
-### Ranking, stated honestly
+### Honest ranking
 
 ```
 PyInstaller  <<  Nuitka  <  Cython
-(easy)                      (native RE required)
+(easy)                      (native reverse engineering)
 ```
 
 None of these stop a determined attacker. Nuitka and Cython raise the cost from
-"run a tool" to "use a disassembler and understand the output". That is the
-entire benefit, and it is a real one — but it is not secrecy.
+"run a tool" to "use a disassembler and understand the output". That is the whole
+benefit, and it is not secrecy.
 
-## Which one this project uses, and why both
+## What this project uses
 
-* **Cython for `pro/`** in the RPM: the target already pins CPython 3.12
-  (`Requires: python3.12`), so the "needs an exact minor version" cost is zero,
-  and the extension gives the strongest protection on the tier that has
-  proprietary algorithms.
-* **PyInstaller for the diagnostic CLI** (`packaging/build_exe.py`): it is meant
-  to be copied to an arbitrary machine and run once. Requiring a matching
-  interpreter there would defeat the purpose, so a self-contained binary wins
-  despite offering no protection — that binary contains only the open tiers.
-* **Nuitka is not used.** It was evaluated and measured for this document. It
-  sits between the two on every axis and is slower to build by an order of
-  magnitude; the project has no case that needs exactly that trade-off. The
-  flags remain in `packaging/nuitka_flags.txt` so the evaluation can be repeated.
+* **Cython for `pro/`** in the RPM. The target already pins CPython 3.12
+  (`Requires: python3.12`), so the ABI lock costs nothing, and it gives the
+  strongest protection on the tier holding proprietary algorithms. Its import
+  cost is nil (136 vs 132 ms), so nothing is traded for that protection.
+* **PyInstaller for the diagnostic CLI.** It is copied to an arbitrary machine
+  and run once; requiring a matching interpreter would defeat the purpose. The
+  binary contains only the open tiers, so its weakness against extraction does
+  not expose anything proprietary.
+* **Nuitka is evaluated, not adopted.** On Linux it is 20 % faster at startup and
+  13 % smaller than PyInstaller, at 7× the build time. That is a reasonable
+  trade for a distributed desktop binary; here the CLI is a diagnostic tool run
+  occasionally, and the build speed directly slows CI. Flags stay in
+  `packaging/nuitka_flags.txt` so the evaluation is repeatable.
 
-## Reproducing
+## macOS figures (superseded)
 
-```bash
-# PyInstaller
-uv sync --all-extras
-python packaging/build_exe.py                       # -> dist/hwmon-cli
+Kept only to document the discrepancy that made the re-run necessary:
 
-# Nuitka
-python -m nuitka --standalone --onefile \
-  --output-dir=/tmp/nuitka-build/dist --output-filename=hwmon-nuitka \
-  --include-package=hwmon.collectors --include-package-data=hwmon entry.py
+| | PyInstaller | Nuitka |
+|---|---|---|
+| Warm start | 0.33 s | **0.43 s** (slower!) |
+| Size | 8.8 MB | 7.5 MB |
 
-# Cython
-uv run --extra cython python packaging/build_ext.py --out build/cython
-
-# timing (5 runs, warm)
-for i in 1 2 3 4 5; do /usr/bin/time -p ./dist/hwmon-cli --only mem >/dev/null; done
-
-# extraction check
-uv run --with pyinstxtractor-ng python -m pyinstxtractor_ng dist/hwmon-cli
-```
-
-Note for the Cython leg: run the result with the interpreter it was built for.
-A `.cpython-312` artefact is invisible to 3.13 and reports `ModuleNotFoundError`,
-which is easy to misread as a packaging failure — see
-[packaging-comparison.md](packaging-comparison.md#axis-1--python-version-abi-tag).
+On macOS Nuitka started *slower* than PyInstaller. On Linux it is 20 % faster.
+Nuitka's onefile bootstrap re-decompresses its payload every run on macOS and
+does so much faster on Linux; PyInstaller caches its extraction. **A packaging
+benchmark from a developer laptop describes the laptop**, which is why the table
+above is Linux-only.
