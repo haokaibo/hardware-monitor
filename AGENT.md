@@ -39,14 +39,19 @@ same repository but stay behind their own package boundary.
 4. **No deployment from GitHub.** `.github/workflows/ci.yml` builds and tests
    only. Deploys happen exclusively through `.gitea/workflows/deploy.yaml` on a
    self-hosted runner inside the intranet. Never add a deploy step to GitHub.
-5. **Secrets never enter the repo.** `.env`, `*.pem`, `*.key`, `license.json`
+5. **Every release artefact is verifiable.** `packaging/sbom.sh` produces an
+   SBOM, a `SHA256SUMS` manifest and a signature over both. A published release
+   without them is not releasable — a consumer cannot distinguish authentic from
+   downloaded. Air-gapped installs go through `hwmon-setup --offline`, never a
+   silent network fallback.
+6. **Secrets never enter the repo.** `.env`, `*.pem`, `*.key`, `license.json`
    and `*.sig` are gitignored. Sample data uses placeholders, never real
    hostnames or hardware serials.
-6. **Comments and identifiers are English.** User-facing strings may be
+7. **Comments and identifiers are English.** User-facing strings may be
    bilingual (`src/hwmon/static/index.html` ships `en` and `zh` locales); code,
    comments, commit messages and docs are English. `README.zh-CN.md` is the only
    Chinese document.
-7. **`cryptography` stays confined to `release.py` and `licensing/`.** The
+8. **`cryptography` stays confined to `release.py` and `licensing/`.** The
    collectors and the HTTP server must never import it: the agent should be
    installable on a host where building wheels is not practical.
 
@@ -79,6 +84,8 @@ packaging/
   build_exe.py       PyInstaller build for the collector CLI
   nuitka_flags.txt   the equivalent Nuitka flags
   hwmonpro.spec      RPM: %build compiles, %install only copies
+  sbom.sh            SBOM (syft) + SHA256SUMS + Ed25519 signatures
+  offline-bundle.sh  air-gap bundle: interpreter + wheels + checksums
   docker/            runtime images .rocky{8,9}, build images .extbuild.rocky{8,9}
 docs/                deployment-ci.md, troubleshooting.md
 tests/               pytest suite; conftest.py builds the fake host tree

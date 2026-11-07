@@ -189,7 +189,7 @@ tests/            测试套件（无第三方依赖）
   test_app.py       单元测试（unittest）
   smoke.py          部署后冒烟测试
   fixtures/         测试用样例数据
-docs/             部署文档（Gitea Actions 自动部署）
+docs/             部署文档、打包对比、离线安装、排障手册
 .github/workflows/  GitHub CI（测试 + docker build，不做部署）
 .gitea/workflows/   Gitea 部署工作流（仅内网）
 SECURITY.md        安全模型：仅内网、无 TLS、无登录

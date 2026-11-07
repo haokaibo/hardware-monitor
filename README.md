@@ -210,7 +210,8 @@ tests/            test suite (no third-party deps)
   test_app.py       unit tests (unittest)
   smoke.py          post-deploy smoke test
   fixtures/         sample metric payloads for tests
-docs/             deployment guides (Gitea Actions)
+docs/             deployment guides, packaging comparison,
+                  offline install, troubleshooting
 .github/workflows/  GitHub CI (tests + docker build; never deploys)
 .gitea/workflows/   Gitea deploy workflow (intranet only)
 SECURITY.md       security model: intranet-only, no TLS, no login

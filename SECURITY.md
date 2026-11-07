@@ -82,6 +82,58 @@ than switched on by default. `packaging/build_ext.py` can compile it
 (`--modules licensing/verify.py`); the default list is what expresses the
 decision.
 
+### What the licensing check can and cannot do
+
+The licence check runs on the customer's own machine, so it is a **detection
+mechanism, not an enforcement one**. Anything a process can do locally, a
+sufficiently determined local operator can also do: patch the check out,
+short-circuit the import, or attach a debugger. No amount of client-side
+obfuscation changes that, and Cython is not claimed to.
+
+This is stated deliberately rather than left implied, because the alternative
+reads as an overpromise. What the check actually buys:
+
+* **Honest-use compliance.** The overwhelming majority of customers act in good
+  faith; a check that is easy to run and hard to "accidentally" skip is enough.
+* **Contractual evidence.** A signed licence bound to a machine id is
+  attributable proof of entitlement, which is what an audit or a procurement
+  review asks for.
+* **Tamper visibility.** Licence JSON is signed; edits are detected, not ignored.
+
+What it does not do is stop a hostile operator. Preventing that requires the
+algorithm or the entitlement decision to live somewhere the operator does not
+control — a server-side component or hardware root of trust — which is a
+different architecture with its own availability and privacy trade-offs. This
+project does not have one, and does not pretend to.
+
+The same caution applies to compiling `pro/`: it raises the cost of
+reverse-engineering a proprietary algorithm. It is not protection against a
+determined attacker, and describing it as such would be exactly the kind of
+claim that fails a security review.
+
+### SBOM and artefact integrity
+
+Supply-chain expectations for a packaged product are: an inventory of what is
+inside, a checksum for each artefact, and a signature over the checksum. This
+repository produces the first two and verifies the third:
+
+| Artefact | Produced by | Where |
+|---|---|---|
+| SBOM (SPDX JSON + CycloneDX) | `syft`, in `packaging/sbom.sh` | attached to the GitHub release |
+| `SHA256SUMS` over every artefact | `sha256sum`, in the same script | attached to the release |
+| `SBOM.sha256` | same | proves the SBOM was not swapped |
+| Detached Ed25519 signature per artefact | `hwmon sign` | `*.sig` next to each file |
+
+Signing covers the checksum file as well as the artefacts, so a consumer can
+verify one signature and then trust the manifest. `hwmon verify` is the check
+side; it fails closed (see
+[troubleshooting-packaging.md](docs/troubleshooting-packaging.md#4-licence-verification-failures)
+for the error-to-cause table).
+
+The SBOM is generated from the **built image and the wheel**, not from
+`pyproject.toml`: the point is to describe what actually ships, including the
+CPython runtime that uv installs inside the image.
+
 ### What the agent can read
 
 The agent runs as root and reads `/proc`, `/sys` and `hwmon` nodes. It exposes

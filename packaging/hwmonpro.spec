@@ -25,6 +25,9 @@ BuildArch:      noarch
 
 Requires:       systemd
 Requires:       kmod
+# hwmon-setup provisions the interpreter and venv with uv. Declared so a missing
+# uv is a dependency error, not a runtime surprise in %post.
+Requires:       uv
 
 # The pro extensions are compiled against one CPython minor version. Keep this
 # in lockstep with .python-version; the %build step aborts if they disagree.
@@ -124,14 +127,92 @@ UNIT
 
 install -m 0755 /dev/stdin %{buildroot}%{_sbindir}/hwmon-setup <<'SETUP'
 #!/bin/sh
-# Provision the pinned interpreter and venv, then print next steps.
+# Provision the pinned interpreter and the runtime venv.
+#
+# Two modes, because enterprise hosts are frequently air-gapped:
+#
+#   online  (default)  uv python install + uv sync, fetching from the internet
+#   offline            install from a bundle prepared on a connected machine
+#
+# The offline bundle layout (built by packaging/offline-bundle.sh):
+#
+#   /opt/hwmon-offline/
+#     cpython-<version>-<platform>/   a uv-managed interpreter, pre-downloaded
+#     wheels/                         every wheel the runtime needs
+#     bundle.txt                      interpreter version + SHA256SUMS
+#
+# Selecting a mode: set HWMON_OFFLINE=1 in /etc/hwmon/hwmon-setup.conf, or pass
+# --offline. The installer never silently falls back to the network: if the
+# bundle is requested and unusable it fails with an actionable message, because
+# a systemd service that cannot start is easier to diagnose than one that
+# half-installed.
 set -eu
+
 DATA=/usr/share/hwmon
+CONF=/etc/hwmon/hwmon-setup.conf
+BUNDLE=/opt/hwmon-offline
+PYVER=$(cat "$DATA/.python-version")
+
+MODE=online
+[ -f "$CONF" ] && . "$CONF"
+[ "${1:-}" = "--offline" ] && MODE=offline
+[ "${HWMON_OFFLINE:-0}" = "1" ] && MODE=offline
+
+UV=$(command -v uv 2>/dev/null || true)
+[ -n "$UV" ] || [ -x /usr/local/bin/uv ] && UV=/usr/local/bin/uv
+
 export UV_PYTHON_INSTALL_DIR=/opt/uv/python
 export UV_PROJECT_ENVIRONMENT=/opt/hwmon/venv
-cd "$DATA"
-/usr/local/bin/uv python install "$(cat .python-version)"
-/usr/local/bin/uv sync --frozen --no-dev
+export UV_CACHE_DIR=/opt/hwmon/.uv-cache
+
+fail() { echo "hwmon-setup: $*" >&2; exit 1; }
+
+if [ "$MODE" = offline ]; then
+  echo "hwmon-setup: offline mode, using $BUNDLE"
+  [ -d "$BUNDLE" ] || fail "no bundle at $BUNDLE. Build one on a connected host:
+    packaging/offline-bundle.sh --python $PYVER --out /media/usb/hwmon-offline
+  then copy it to $BUNDLE on this host."
+
+  # Integrity first: a truncated copy is the most common failure and it looks
+  # like a corrupt wheel further down.
+  if [ -f "$BUNDLE/SHA256SUMS" ]; then
+    # Plain `-c`: --quiet is a GNU extension and BusyBox's sha256sum rejects it,
+    # so the check would fail on a minimal host for the wrong reason. Output is
+    # thousands of "OK" lines; keep the tail only when it fails.
+    if ! ( cd "$BUNDLE" && sha256sum -c SHA256SUMS >/tmp/hwmon-verify.log 2>&1 ); then
+      grep -v ': OK$' /tmp/hwmon-verify.log | head -5 >&2 || true
+      fail "bundle checksum mismatch in $BUNDLE (see /tmp/hwmon-verify.log)"
+    fi
+    rm -f /tmp/hwmon-verify.log
+  else
+    fail "$BUNDLE/SHA256SUMS missing; refusing to install unverified wheels"
+  fi
+
+  # Interpreter: copy the pre-downloaded managed CPython into uv's directory.
+  PYDIR=$(ls -d "$BUNDLE"/cpython-"$PYVER"* 2>/dev/null | head -1)
+  [ -n "$PYDIR" ] || fail "bundle has no interpreter for $PYVER (looked for $BUNDLE/cpython-$PYVER*)"
+  install -d "$UV_PYTHON_INSTALL_DIR"
+  cp -a "$PYDIR" "$UV_PYTHON_INSTALL_DIR"/
+
+  # Wheels: --offline forbids any network access; if a wheel is missing uv says
+  # which one, which is exactly the message the operator needs.
+  [ -n "$UV" ] || fail "uv not found; the RPM Requires it. Install the uv RPM or place it in /usr/local/bin."
+  "$UV" venv --python "$PYVER" "$UV_PROJECT_ENVIRONMENT" --allow-existing
+  "$UV" pip install --python "$UV_PROJECT_ENVIRONMENT/bin/python" \
+        --offline --no-index --find-links "$BUNDLE/wheels" \
+        "hwmon==${HWMON_VERSION:-$(cat "$DATA/VERSION")}" \
+    || fail "wheel install failed. Verify the bundle contains every file from uv.lock.
+    Rebuild it with: packaging/offline-bundle.sh"
+  echo "hwmon-setup: offline install complete"
+else
+  [ -n "$UV" ] || fail "uv not found; install it or run: hwmon-setup --offline"
+  "$UV" python install "$PYVER"
+  ( cd "$DATA" && "$UV" sync --frozen --no-dev )
+  echo "hwmon-setup: online install complete"
+fi
+
+chmod -R a+rX /opt/hwmon/venv
+install -d -m 0700 /var/lib/hwmon
 echo "hwmon installed. Configure /etc/hwmon/agent.env then: systemctl enable --now hwmon-agent"
 SETUP
 
@@ -141,7 +222,23 @@ if [ ! -f %{_sysconfdir}/%{name}/agent.env ]; then
   umask 077
   printf 'AGENT_TOKEN=\nAGENT_LABEL=%s\n' "$(uname -n)" > %{_sysconfdir}/%{name}/agent.env
 fi
-%{_sbindir}/hwmon-setup || echo "hwmon: run %{_sbindir}/hwmon-setup once uv is available"
+# The service cannot start without a provisioned venv, so a failure here is
+# reported loudly instead of letting systemd fail later with a confusing
+# "no such file" on the ExecStart path. %post must not abort the transaction
+# (the files are installed correctly); it prints the exact command to retry.
+if ! %{_sbindir}/hwmon-setup; then
+  cat >&2 <<'MSG'
+
+  hwmon: runtime provisioning FAILED - the service will not start yet.
+
+  Online host:   hwmon-setup
+  Air-gapped:    packaging/offline-bundle.sh on a connected machine, copy the
+                 bundle to /opt/hwmon-offline, then: hwmon-setup --offline
+
+  Then:          systemctl enable --now hwmon-agent
+
+MSG
+fi
 %systemd_post hwmon-agent.service
 
 %preun

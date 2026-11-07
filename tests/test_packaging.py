@@ -248,3 +248,65 @@ def test_dockerfiles_make_the_package_readable():
     for path in runtime_images:
         text = path.read_text()
         assert "chmod -R a+rX" in text, f"{path.name} does not normalise permissions"
+
+
+# ---------------------------------------------------------------- supply chain
+
+
+def test_sbom_script_produces_a_manifest_and_signatures():
+    script = (REPO / "packaging" / "sbom.sh").read_text()
+    assert "sha256sum" in script
+    assert "spdx-json" in script and "cyclonedx-json" in script
+    # signing must cover the manifest, not only the artefacts
+    assert "SHA256SUMS" in script.split("==> signing", 1)[1]
+    # and it must not claim success when no key was supplied
+    assert "signing skipped" in script
+
+
+def _code_lines(text: str) -> list[str]:
+    """Non-comment lines: comments legitimately mention the flags they forbid."""
+    return [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+
+
+def test_sbom_uses_portable_commands():
+    """find -printf is GNU-only; on macOS it silently yields an empty manifest."""
+    script = (REPO / "packaging" / "sbom.sh").read_text()
+    assert not any("-printf" in ln for ln in _code_lines(script))
+    assert "sha256sum -c" in (REPO / "docs" / "offline-install.md").read_text()
+
+
+def test_offline_bundle_script_and_docs_exist():
+    bundle = (REPO / "packaging" / "offline-bundle.sh").read_text()
+    assert "uv export" in bundle          # derived from the lock, not hand-written
+    assert "SHA256SUMS" in bundle
+    # the interpreter must be copied as real files, not as a symlink into a
+    # temp dir: that bug shipped an empty bundle once already
+    assert "pwd -P" in bundle
+    assert "is not a real directory" in bundle
+
+    doc = (REPO / "docs" / "offline-install.md").read_text()
+    assert "hwmon-setup --offline" in doc
+    assert "--network none" in doc        # records how it was verified
+    assert "bundle checksum mismatch" in doc
+
+
+def test_setup_supports_offline_mode():
+    spec = (REPO / "packaging" / "hwmonpro.spec").read_text()
+    setup = spec.split("hwmon-setup <<'SETUP'", 1)[1].split("\nSETUP", 1)[0]
+    assert "--offline" in setup
+    assert "HWMON_OFFLINE" in setup
+    # offline must not silently fall back to the network
+    assert "fail " in setup
+    # and the checksum verification must be portable (no GNU --quiet)
+    assert not any("--quiet" in ln for ln in _code_lines(setup)), [
+        ln for ln in _code_lines(setup) if "--quiet" in ln
+    ]
+    assert "sha256sum -c" in setup
+
+
+def test_rpm_declares_uv_and_reports_provisioning_failure():
+    spec = (REPO / "packaging" / "hwmonpro.spec").read_text()
+    assert "Requires:       uv" in spec
+    post = spec.split("%post", 1)[1].split("%preun", 1)[0]
+    assert "FAILED" in post               # a silent echo was the old behaviour
+    assert "offline-bundle.sh" in post    # the operator is told how to recover
