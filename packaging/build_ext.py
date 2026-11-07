@@ -63,8 +63,14 @@ PRO_MODULES = (
 SETUP_PY = '''\
 from setuptools import Extension, setup
 from Cython.Build import cythonize
+from Cython.Compiler import Options
 
 import sys
+
+# Not a compiler directive: docstrings is a global Cython option. Left at its
+# default (True) the compiled object still contains every docstring, which
+# hands a reader a prose description of the algorithm without any disassembly.
+Options.docstrings = False
 
 # A plain Cython module (no Py_LIMITED_API) is the right choice here: the pro
 # modules use sqlite3 and dataclasses, and a limited-API build would not work
@@ -74,7 +80,10 @@ setup(
     ext_modules=cythonize(
         [{modules}],
         language_level="3",
-        compiler_directives={{"binding": True, "embedsignature": False}},
+        compiler_directives={{
+            "binding": True,
+            "embedsignature": False,
+        }},
         quiet=False,
     ),
     script_args=sys.argv[1:],

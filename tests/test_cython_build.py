@@ -241,3 +241,44 @@ def test_comparison_doc_points_at_the_argument():
 def test_verifier_can_still_be_compiled_on_request(build_script):
     """The capability is documented; only the default excludes it."""
     assert "--modules" in build_script
+
+
+# ---------------------------------------------------------------- hardening
+
+
+def test_docstrings_are_stripped_from_compiled_modules(build_script):
+    """Cython keeps docstrings by default, which leaks prose about the algorithm.
+
+    Measured before the fix: `strings history.so` contained "SQLite-backed
+    history storage..." giving a reader a map of the module without disassembly.
+    `docstrings` is a global Cython option, not a compiler directive, so it is
+    set through Cython.Compiler.Options.
+    """
+    assert "Options.docstrings = False" in build_script
+    # and it must not be passed as a directive, which raises ValueError
+    directives = build_script.split("compiler_directives=", 1)[1].split("}", 1)[0]
+    assert "docstrings" not in directives
+
+
+def test_build_comparison_doc_records_measured_facts():
+    """The comparison table must match what the builds actually produced."""
+    doc = (REPO / "docs" / "build-comparison.md").read_text()
+    # all three options are represented with real numbers
+    for tool in ("PyInstaller", "Nuitka", "Cython"):
+        assert tool in doc
+    for number in ("8.8 MB", "7.5 MB", "236 KB", "0.33 s", "0.43 s", "0.03 s"):
+        assert number in doc, number
+    # the counter-intuitive result must be stated, not smoothed over
+    assert "started *slower*" in doc or "started slower" in doc
+    # and the honesty clause about protection
+    assert "not secrecy" in doc or "None of these stop a determined attacker" in doc
+
+
+def test_nuitka_is_declared_but_not_the_default_path():
+    """Nuitka was evaluated; the flags stay so the evaluation is repeatable."""
+    flags = (REPO / "packaging" / "nuitka_flags.txt").read_text()
+    assert "--include-package=hwmon.collectors" in flags
+    pyproject = (REPO / "pyproject.toml").read_text()
+    assert "nuitka" in pyproject  # reachable via the `build` extra
+    doc = (REPO / "docs" / "build-comparison.md").read_text()
+    assert "Nuitka is not used" in doc

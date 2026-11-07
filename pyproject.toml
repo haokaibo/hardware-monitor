@@ -36,7 +36,11 @@ hwmon = "hwmon.cli:main"
 # Kept separate from the default install: neither tool is needed to run the
 # monitor, only to produce a distributable artefact.
 build = [
+    "nuitka>=4.3.4",
+    "ordered-set>=4.1.0",
+    "patchelf>=0.19.3.0",
     "pyinstaller>=6.10",
+    "zstandard>=0.25.0",
 ]
 cython = [
     "cython>=3.3.1",

@@ -138,8 +138,12 @@ so the two cannot drift.
 
 ```bash
 uv sync                      # install locked deps + the project
-uv run pytest -q             # full suite (214 tests)
+uv run pytest -q             # full suite (227 tests)
 uv run --extra cython pytest # the same, including the real Cython compile
+
+# compare the three packaging approaches (measured, see docs/build-comparison.md)
+python packaging/build_exe.py                                   # PyInstaller
+uv run --extra cython python packaging/build_ext.py             # Cython
 uv run hwmon agent           # run the agent from source
 uv run hwmon web             # run the dashboard from source
 uv build                     # sdist + wheel into dist/
