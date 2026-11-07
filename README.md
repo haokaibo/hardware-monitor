@@ -1,17 +1,20 @@
 # hwmon — Lightweight Hardware Monitor
 
-> Self-hosted · MIT License · Zero dependencies · Linux + AMD
+> Self-hosted · MIT License · Linux + AMD · uv-managed
 
-A tiny self-hosted hardware monitor: one Python agent on your server, one
-single-page dashboard in the browser. No database, no third-party packages,
-no install — just `python3 app.py`.
+A self-hosted hardware monitor: one Python agent on the server you are
+watching, one single-page dashboard in the browser. No database and no web
+framework — the whole backend is the standard library plus `cryptography`,
+installed from a committed lock file.
 
-- **agent** — runs on the monitored host (Linux, systemd). Reads CPU / GPU /
-  memory / disk metrics from `/proc` and `/sys` once per second.
-- **web** — serves the dashboard and proxies `/api/metrics` from the agent,
-  so the browser never talks to the agent directly.
-- Both modes live in the same [`app.py`](app.py); the first CLI argument
-  (`agent` / `web`) decides which one runs.
+- **agent** — runs on the monitored host (Linux, systemd) and samples CPU / GPU /
+  memory / disk from `/proc` and `/sys` once per second.
+- **web** — serves the dashboard and proxies `/api/metrics` from the agent, so
+  the browser never talks to the agent directly.
+- Both roles live in the same package ([`src/hwmon/`](src/hwmon/)); the
+  subcommand (`hwmon agent` / `hwmon web`) decides which one runs.
+- A **pro tier** ([`src/hwmon/pro/`](src/hwmon/pro/)) adds SQLite history and
+  threshold alerts, compiled to native extensions in packaged builds.
 
 ```
 Browser ──► web (:8080) ──► agent (:9101) ──► /proc, /sys
@@ -171,7 +174,7 @@ uv run python licensing/issue.py --key license-private.pem --machine <id> --days
 
 ```bash
 uv sync                       # installs dev deps too
-uv run pytest -q              # 158 tests
+uv run pytest -q              # full suite, nothing skipped
 uv lock --check               # fails if uv.lock is stale (CI gate)
 uv build                      # sdist + wheel into dist/
 
@@ -235,7 +238,7 @@ packaging/
 dev/
   Dockerfile.test   Linux test environment (real /proc + /sys)
   run-tests.sh      build and run it
-tests/              pytest suite, 235 cases
+tests/              pytest suite (stdlib + pytest only)
   conftest.py       fake-host fixture (HWMON_ROOT redirection)
   test_collectors.py        per-subsystem collectors
   test_collector_loader.py  dynamic loading + the CLI

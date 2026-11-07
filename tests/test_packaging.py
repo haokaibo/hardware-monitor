@@ -476,3 +476,59 @@ def test_chinese_readme_layout_is_not_stale():
         assert stale not in block, f"中文目录结构仍提到 {stale!r}"
     for required in ("src/hwmon/", "collectors/", "pro/", "licensing/", "packaging/", "dev/"):
         assert required in block, f"中文目录结构缺少 {required}"
+
+
+def test_readmes_have_no_broken_relative_links():
+    """A dead link in the first screenful is worse than a missing section.
+
+    `[app.py](app.py)` survived the refactor and 404'd for anyone who clicked it.
+    """
+    import re
+
+    for name in ("README.md", "README.zh-CN.md", "AGENT.md", "SECURITY.md"):
+        path = REPO / name
+        if not path.exists():
+            continue
+        text = path.read_text()
+        broken = []
+        for m in re.finditer(r"\[([^\]]+)\]\(([^)#]+)\)", text):
+            target = m.group(2).strip()
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            if not target.endswith((".md", ".py", ".svg", ".html", ".toml", ".spec", ".sh", ".txt", "/")):
+                continue
+            if not (REPO / target.rstrip("/")).exists():
+                broken.append(f"[{m.group(1)}]({target})")
+        assert broken == [], f"{name} has broken relative links: {broken}"
+
+
+def test_readme_intro_does_not_promise_the_old_single_file_tool():
+    """The first paragraph is what a visitor judges the project by.
+
+    It claimed "zero dependencies / no install — just python3 app.py" long after
+    the project became a uv-managed package with one runtime dependency.
+    """
+    for name in ("README.md", "README.zh-CN.md"):
+        heading = (REPO / name).read_text().split("\n---\n", 1)[0]
+        for stale in (
+            "python3 app.py",
+            "no install",
+            "无需安装",
+            "Zero dependencies",
+            "Zero depend",
+            "零依赖",
+            "(app.py)",
+        ):
+            assert stale not in heading, f"{name} intro still says {stale!r}"
+        # and it must describe what the project is now
+        assert "uv" in heading.lower() or "uv-" in heading, f"{name} intro should mention uv"
+
+
+def test_readme_does_not_hardcode_a_test_count():
+    """Every new test made the README's number wrong; the suite reports its own."""
+    import re
+
+    for name in ("README.md", "README.zh-CN.md"):
+        text = (REPO / name).read_text()
+        stale = re.findall(r"#\s*\d+\s*(?:tests|个用例)", text)
+        assert stale == [], f"{name} hardcodes a test count: {stale}"

@@ -1,17 +1,20 @@
 # hwmon — 轻量级硬件监控
 
-> 轻量级硬件监控 · MIT License · 零依赖
+> 自托管 · MIT License · Linux + AMD · uv 管理依赖
 
 [English](README.md) · 中文
 
-一个自托管的小型硬件监控：服务器上跑一个 Python agent，浏览器里一个单页
-仪表盘。没有数据库，没有第三方依赖，无需安装——`python3 app.py` 即可。
+一个自托管的硬件监控：被监控的服务器上跑一个 Python agent，浏览器里一个单页
+仪表盘。没有数据库，也没有 Web 框架——整个后端只有标准库加 `cryptography`，
+依赖由仓库内提交的锁文件安装。
 
 - **agent** — 运行在被监控主机上（Linux + systemd），每秒从 `/proc` 与 `/sys`
   读取 CPU / GPU / 内存 / 磁盘指标。
 - **web** — 提供仪表盘，并转发 agent 的 `/api/metrics`，浏览器从不直接接触 agent。
-- 两种模式都在同一个 [`app.py`](app.py) 里，由第一个命令行参数（`agent` / `web`）
-  决定运行哪种。
+- 两种角色都在同一个包里（[`src/hwmon/`](src/hwmon/)），由子命令
+  （`hwmon agent` / `hwmon web`）决定运行哪种。
+- **专业版**（[`src/hwmon/pro/`](src/hwmon/pro/)）提供 SQLite 历史与阈值告警，
+  打包时编译为原生扩展。
 
 ```
 浏览器 ──► web (:8080) ──► agent (:9101) ──► /proc, /sys
@@ -154,11 +157,12 @@ uv run python licensing/issue.py --key license-private.pem --machine <id> --days
 
 ## 开发与测试
 
-只用标准库，无需安装测试依赖。
+运行时依赖只有 `cryptography`，测试依赖只有 `pytest`，都由 `uv sync` 按锁文件
+安装，因此不需要手工 `pip install` 任何东西。
 
 ```bash
 uv sync                       # 同时安装开发依赖
-uv run pytest -q              # 158 个用例
+uv run pytest -q              # 完整套件，无跳过
 uv lock --check               # uv.lock 过期时失败（CI 门禁）
 uv build                      # 生成 sdist + wheel 到 dist/
 
@@ -214,7 +218,7 @@ packaging/
 dev/
   Dockerfile.test   Linux 测试环境（真实 /proc + /sys）
   run-tests.sh      构建并运行它
-tests/              pytest 套件，235 个用例
+tests/              pytest 套件（仅需标准库与 pytest）
   conftest.py       假主机 fixture（HWMON_ROOT 重定向）
   test_collectors.py        各子系统采集器
   test_collector_loader.py  动态加载与 CLI
