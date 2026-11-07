@@ -375,3 +375,38 @@ def test_rocky_images_resolve_the_curl_package_conflict():
             # Rocky 9: either the minimal package, or plain curl with --allowerasing
             ok = "curl-minimal" in cmd or "--allowerasing" in cmd
             assert ok, f"{name}: Rocky 9 needs curl-minimal or --allowerasing, got {cmd!r}"
+
+
+def test_test_image_copies_every_root_document_the_tests_read():
+    """dev/Dockerfile.test uses an explicit COPY list, so it drifts.
+
+    When BUILD-COMPARISON.md was added, the image was not updated and two tests
+    failed inside the container with FileNotFoundError - which reads like a code
+    bug, not a missing COPY. Any file a test opens from the repo root must be in
+    the image.
+    """
+    image = REPO / "dev" / "Dockerfile.test"
+    if not image.exists():
+        # The image deliberately does not copy dev/ (it is the definition of the
+        # image itself). Inside the container this check cannot run; the host and
+        # CI run it, which is where a stale COPY list is introduced.
+        pytest.skip("dev/Dockerfile.test is not present in this environment")
+
+    root_docs = sorted(p.name for p in REPO.glob("*.md")) + ["VERSION", "LICENSE", "Dockerfile"]
+    dockerfile = image.read_text()
+
+    missing = [name for name in root_docs if name not in dockerfile]
+    assert missing == [], (
+        "dev/Dockerfile.test does not copy: "
+        + ", ".join(missing)
+        + " - tests that read these will fail in the container"
+    )
+
+
+def test_benchmark_script_is_executable_and_syntactically_valid():
+    import subprocess
+
+    script = REPO / "packaging" / "benchmark.sh"
+    assert script.is_file()
+    proc = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr

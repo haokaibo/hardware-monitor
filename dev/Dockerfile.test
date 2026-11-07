@@ -36,7 +36,12 @@ COPY docs ./docs
 # The packaging tests read these from the repo root; a test image that omits
 # them turns a missing COPY into a test failure that looks like a code bug.
 COPY docker-compose.yml Dockerfile ./ 
-COPY VERSION README.md README.zh-CN.md LICENSE AGENT.md SECURITY.md ./
+# Every root-level document the tests read. Kept as an explicit list rather than
+# a wildcard so the image cannot silently gain files, but it has to be updated
+# when a document is added - a missing entry fails as FileNotFoundError inside a
+# test, which looks like a code bug. tests/test_packaging.py guards it.
+COPY VERSION LICENSE ./
+COPY README.md README.zh-CN.md AGENT.md SECURITY.md BUILD-COMPARISON.md ./
 RUN uv sync --frozen --all-extras
 # make sources world-readable for any non-root user
 RUN chmod -R a+rX /src
