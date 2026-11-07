@@ -308,3 +308,28 @@ def test_nuitka_is_declared_but_not_the_default_path():
     assert "nuitka" in pyproject  # reachable via the `build` extra
     doc = (REPO / "docs" / "build-comparison.md").read_text()
     assert "Nuitka is evaluated, not adopted" in doc
+
+
+def test_root_level_comparison_matches_the_detailed_doc():
+    """BUILD-COMPARISON.md is the data table; docs/build-comparison.md is the
+    narrative. They must not drift apart, or a reader gets two truths."""
+    root = (REPO / "BUILD-COMPARISON.md").read_text()
+    detailed = (REPO / "docs" / "build-comparison.md").read_text()
+
+    # every headline figure must appear in both
+    for figure in ("8.13 MB", "7.11 MB", "2.14 MB", "213 ms", "171 ms", "57 s"):
+        assert figure in root, f"{figure} missing from BUILD-COMPARISON.md"
+        assert figure in detailed, f"{figure} missing from docs/build-comparison.md"
+
+    # the root table must state its platform and the emulation caveat
+    assert "linux/amd64" in root
+    assert "1.85" in root and "emulat" in root
+    # and must not present protected code as unobtainable
+    assert "None stop a determined attacker" in root
+
+
+def test_root_comparison_records_the_benchmark_fault():
+    """The 15 ms false result is the most useful lesson in the file."""
+    root = (REPO / "BUILD-COMPARISON.md").read_text()
+    assert "15 ms" in root
+    assert "command not found" in root
